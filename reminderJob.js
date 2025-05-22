@@ -2,36 +2,37 @@ require('dotenv').config();
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const twilio = require('twilio');
 
-const TWILIO_SID = process.env.TWILIO_SID;
-const TWILIO_AUTH = process.env.TWILIO_AUTH;
-const TWILIO_NUMBER = process.env.TWILIO_NUMBER;
-const client = twilio(TWILIO_SID, TWILIO_AUTH);
+const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
 
-async function sendReminders() {
-  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
+// ⏰ פונקציה שמריצה בדיקה כל דקה
+async function checkReminders() {
   await doc.useServiceAccountAuth(require('/etc/secrets/credentials.json'));
   await doc.loadInfo();
   const sheet = doc.sheetsByIndex[0];
   const rows = await sheet.getRows();
 
   const now = new Date();
-  const nowISO = now.toISOString();
 
-  for (let row of rows) {
-    if (row.was_sent === 'FALSE' && row.reminder_datetime && row.reminder_datetime <= nowISO) {
-      const message = `⏰ תזכורת: ${row.task_name || 'יש לך משימה'} – הגיע הזמן לטפל בזה!`;
+  for (const row of rows) {
+    if (!row.reminder_datetime || row.was_sent === 'TRUE') continue;
+
+    const reminderTime = new Date(row.reminder_datetime);
+    if (reminderTime <= now) {
+      // שולחים את התזכורת
+      const message = `🔔 תזכורת: ${row.task_name || 'משימה ללא שם'} \n📅 תאריך: ${row.due_date || 'לא צוין'} \n📁 קטגוריה: ${row.category || 'כללי'}`;
 
       await client.messages.create({
-        from: `whatsapp:${TWILIO_NUMBER}`,
+        from: 'whatsapp:+14155238886', // המספר של Twilio
         to: row.phone_number,
         body: message,
       });
 
-      row.was_sent = 'TRUE';
+      row.was_sent = true;
       await row.save();
-      console.log(`📤 נשלחה תזכורת ל: ${row.phone_number}`);
+      console.log(`📤 נשלחה תזכורת ל-${row.phone_number}`);
     }
   }
 }
 
-sendReminders();
+setInterval(checkReminders, 60 * 1000); // כל דקה
