@@ -67,10 +67,11 @@ app.post('/webhook', async (req, res) => {
 
   // ניתוח עם GPT
   const gptData = await analyzeMessageWithGPT(message);
-  row.task_name = gptData.task_name;
-  row.category = gptData.category;
-  row.due_date = gptData.due_date;
-  row.frequency = gptData.frequency;
+	row.task_name = gptData.task_name || '';
+	row.category = gptData.category || '';
+	row.due_date = gptData.due_date || '';
+	row.frequency = gptData.frequency || '';
+
 
   // קביעת זמן תזכורת
   if (row.due_date) {
