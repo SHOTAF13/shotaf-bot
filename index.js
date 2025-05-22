@@ -78,17 +78,16 @@ let reminderHour = '12:00';
 if (message.includes('בבוקר')) reminderHour = '09:00';
 else if (message.includes('בערב')) reminderHour = '19:00';
 
+// נוודא ש־due_date באמת תאריך תקין
 if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-  try {
-    row.reminder_datetime = new Date(`${row.due_date}T${reminderHour}:00.000Z`).toISOString();
-  } catch (err) {
-    console.warn('⚠️ שגיאה ביצירת reminder_datetime:', err);
-    row.reminder_datetime = '';
-  }
+  const time = reminderHour + ':00'; // מוסיף שניות
+  row.reminder_datetime = new Date(`${row.due_date}T${time}Z`).toISOString();
 } else {
-  console.warn('⚠️ אין תאריך תקני – reminder_datetime נשאר ריק');
+  console.warn("⚠️ אין תאריך תקני – reminder_datetime נשאר ריק");
   row.reminder_datetime = '';
 }
+
+
 
 
 
