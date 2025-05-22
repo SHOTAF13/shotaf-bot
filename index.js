@@ -3,12 +3,11 @@ const { analyzeMessageWithGPT } = require("./gpt");
 const express = require('express');
 const bodyParser = require('body-parser');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
-const creds = require('./google-creds.json');
 
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
@@ -19,7 +18,9 @@ async function saveToSheet(taskData) {
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
 
   console.log('🔵 auth');
-  await doc.useServiceAccountAuth(creds); // עכשיו זה יעבוד!
+  await doc.useServiceAccountAuth(
+    require('/etc/secrets/credentials.json') // ⬅️ הנתיב לקובץ הסודי ב־Render
+  );
 
   console.log('🔵 load');
   await doc.loadInfo();

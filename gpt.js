@@ -1,6 +1,7 @@
 require("dotenv").config();
 const OpenAI = require("openai");
-console.log("🔑 API:", process.env.OPENAI_API_KEY);
+
+console.log("🔑 API:", process.env.KEY_GPT); // הדפסה לבדוק אם המשתנה נטען
 
 const openai = new OpenAI({
   apiKey: process.env.KEY_GPT,
@@ -52,6 +53,5 @@ async function analyzeMessageWithGPT(message) {
     };
   }
 }
-
 
 module.exports = { analyzeMessageWithGPT };
