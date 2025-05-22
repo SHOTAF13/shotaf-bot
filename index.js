@@ -11,6 +11,15 @@ const PORT = process.env.PORT || 10000;
 
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
+// פונקציה שמחלצת שעה מהטקסט
+function extractReminderTime(text) {
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes("בבוקר")) return "09:00:00";
+  if (lowerText.includes("בצהריים") || lowerText.includes("בצהרים") || lowerText.includes("צהריים")) return "12:00:00";
+  if (lowerText.includes("בערב")) return "19:00:00";
+  return "12:00:00"; // ברירת מחדל
+}
+
 // פונקציה ששומרת שורה בגוגל שיט
 async function saveToSheet(taskData) {
   console.log('📥 נכנסנו לפונקציה saveToSheet');
@@ -49,6 +58,8 @@ app.post('/webhook', async (req, res) => {
     category: '',
     due_date: '',
     frequency: '',
+    reminder_datetime: '',
+    was_sent: false,
     created_at: new Date().toISOString(),
   };
 
@@ -61,10 +72,15 @@ app.post('/webhook', async (req, res) => {
   row.due_date = gptData.due_date;
   row.frequency = gptData.frequency;
 
-  console.log('🤖 תוצאה מ-GPT:', gptData);
-  console.log('📋 שורה מעודכנת עם GPT:', row);
+  // קביעת זמן תזכורת
+  if (row.due_date) {
+    const time = extractReminderTime(row.original_text);
+    row.reminder_datetime = new Date(`${row.due_date}T${time}Z`).toISOString();
+  }
 
-  // הודעה שתישלח ללקוח
+  console.log('🤖 תוצאה מ-GPT:', gptData);
+  console.log('📋 שורה מעודכנת עם GPT + תזכורת:', row);
+
   const responseMessage = `
 קיבלתי! ✅
 שם פעולה: ${row.task_name || 'לא זוהה'}
