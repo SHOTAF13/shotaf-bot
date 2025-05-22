@@ -73,11 +73,22 @@ app.post('/webhook', async (req, res) => {
 	row.frequency = gptData.frequency || '';
 
 
-  // קביעת זמן תזכורת
-  if (row.due_date) {
-    const time = extractReminderTime(row.original_text);
-    row.reminder_datetime = new Date(`${row.due_date}T${time}Z`).toISOString();
+// קביעת זמן תזכורת
+let reminderHour = '12:00';
+if (message.includes('בבוקר')) reminderHour = '09:00';
+else if (message.includes('בערב')) reminderHour = '19:00';
+
+if (row.due_date) {
+  try {
+    row.reminder_datetime = new Date(`${row.due_date}T${reminderHour}:00.000Z`).toISOString();
+  } catch (err) {
+    console.warn('⚠️ לא הצלחתי לחשב reminder_datetime:', err);
+    row.reminder_datetime = '';
   }
+} else {
+  row.reminder_datetime = '';
+}
+
 
   console.log('🤖 תוצאה מ-GPT:', gptData);
   console.log('📋 שורה מעודכנת עם GPT + תזכורת:', row);
