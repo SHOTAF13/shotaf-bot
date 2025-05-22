@@ -3,7 +3,7 @@ const OpenAI = require("openai");
 console.log("🔑 API:", process.env.OPENAI_API_KEY);
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.KEY_GPT,
 });
 
 async function analyzeMessageWithGPT(message) {
