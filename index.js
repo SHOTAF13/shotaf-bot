@@ -43,12 +43,16 @@ async function sendWhatsappMessage(phone, message) {
 }
 
 app.post('/webhook', async (req, res) => {
-  console.log('📩 התקבלה הודעה חדשה!');
-  console.log('📨 גוף ההודעה שהתקבל:', req.body);
+  const phone = req.body.senderData?.chatId?.replace('@c.us', '') || '';
+
+  if (phone !== process.env.MY_PHONE) {
+    return res.sendStatus(200); // מתעלם מהודעות לא ממני
+  }
+
+  console.log('📩 התקבלה הודעה חדשה ממני!');
   console.log('📨 BODY:', JSON.stringify(req.body, null, 2));
 
-const message = req.body.messageData?.textMessageData?.textMessage || '';
-const phone = req.body.senderData?.chatId?.replace('@c.us', '') || 'לא ידוע';
+  const message = req.body.messageData?.textMessageData?.textMessage || '';
 
 
   const row = {
@@ -98,7 +102,9 @@ const phone = req.body.senderData?.chatId?.replace('@c.us', '') || 'לא ידו�
 
   try {
     await saveToSheet(row);
-    await sendWhatsappMessage(phone, responseMessage);
+    if (phone === process.env.MY_PHONE) {
+      await sendWhatsappMessage(phone, responseMessage);
+      }
     res.sendStatus(200);
   } catch (err) {
     console.error('❌ שגיאה בשמירה או שליחה:', err);
