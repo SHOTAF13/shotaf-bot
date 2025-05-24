@@ -7,7 +7,6 @@ const axios = require('axios');
 
 const app = express();
 app.use(bodyParser.json());
-console.log('📨 BODY:', JSON.stringify(req.body, null, 2));
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
@@ -46,6 +45,7 @@ async function sendWhatsappMessage(phone, message) {
 app.post('/webhook', async (req, res) => {
   console.log('📩 התקבלה הודעה חדשה!');
   console.log('📨 גוף ההודעה שהתקבל:', req.body);
+  console.log('📨 BODY:', JSON.stringify(req.body, null, 2));
 
 const message = req.body.messageData?.textMessageData?.textMessage || '';
 const phone = req.body.senderData?.chatId?.replace('@c.us', '') || 'לא ידוע';
