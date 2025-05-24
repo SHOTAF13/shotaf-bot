@@ -3,51 +3,53 @@ const { analyzeMessageWithGPT } = require("./gpt");
 const express = require('express');
 const bodyParser = require('body-parser');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
+const axios = require('axios');
 
 const app = express();
+app.use(bodyParser.json());
+console.log('📨 BODY:', JSON.stringify(req.body, null, 2));
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
 
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
-// פונקציה שמחלצת שעה מהטקסט
 function extractReminderTime(text) {
   const lowerText = text.toLowerCase();
   if (lowerText.includes("בבוקר")) return "09:00:00";
   if (lowerText.includes("בצהריים") || lowerText.includes("בצהרים") || lowerText.includes("צהריים")) return "12:00:00";
   if (lowerText.includes("בערב")) return "19:00:00";
-  return "12:00:00"; // ברירת מחדל
+  return "12:00:00";
 }
 
-// פונקציה ששומרת שורה בגוגל שיט
 async function saveToSheet(taskData) {
   console.log('📥 נכנסנו לפונקציה saveToSheet');
-
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
-
-  console.log('🔵 auth');
-  await doc.useServiceAccountAuth(
-    require('/etc/secrets/credentials.json') // ⬅️ הנתיב לקובץ הסודי ב־Render
-  );
-
-  console.log('🔵 load');
+  await doc.useServiceAccountAuth(require('/etc/secrets/credentials.json'));
   await doc.loadInfo();
-
-  console.log('🔵 sheet select');
   const sheet = doc.sheetsByIndex[0];
-
-  console.log('🟡 שורה לפני שמירה:', taskData);
   await sheet.addRow(taskData);
 }
 
-// טיפול בקבלת הודעת ווטסאפ
+async function sendWhatsappMessage(phone, message) {
+  try {
+    await axios.post(`https://api.green-api.com/waInstance${process.env.idInstance}/sendMessage/${process.env.apiTokenInstance}`, {
+      chatId: phone.replace('+', '') + '@c.us',
+      message
+    });
+    console.log(`📤 הודעה נשלחה ל-${phone}`);
+  } catch (err) {
+    console.error('❌ שגיאה בשליחת ההודעה:', err.response?.data || err.message);
+  }
+}
+
 app.post('/webhook', async (req, res) => {
   console.log('📩 התקבלה הודעה חדשה!');
   console.log('📨 גוף ההודעה שהתקבל:', req.body);
 
-  const message = req.body.Body || '';
-  const phone = req.body.From || 'לא ידוע';
+const message = req.body.messageData?.textMessageData?.textMessage || '';
+const phone = req.body.senderData?.chatId?.replace('@c.us', '') || 'לא ידוע';
+
 
   const row = {
     task_id: 'tsk_' + Date.now(),
@@ -65,31 +67,23 @@ app.post('/webhook', async (req, res) => {
 
   console.log('🗃️ שורה שנבנתה מהודעה:', row);
 
-  // ניתוח עם GPT
   const gptData = await analyzeMessageWithGPT(message);
-	row.task_name = gptData.task_name || '';
-	row.category = gptData.category || '';
-	row.due_date = gptData.due_date || '';
-	row.frequency = gptData.frequency || '';
+  row.task_name = gptData.task_name || '';
+  row.category = gptData.category || '';
+  row.due_date = gptData.due_date || '';
+  row.frequency = gptData.frequency || '';
 
+  let reminderHour = '12:00';
+  if (message.includes('בבוקר')) reminderHour = '09:00';
+  else if (message.includes('בערב')) reminderHour = '19:00';
 
-// קביעת זמן תזכורת
-let reminderHour = '12:00';
-if (message.includes('בבוקר')) reminderHour = '09:00';
-else if (message.includes('בערב')) reminderHour = '19:00';
-
-// נוודא ש־due_date באמת תאריך תקין
-if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-  const time = reminderHour + ':00'; // מוסיף שניות
-  row.reminder_datetime = new Date(`${row.due_date}T${time}Z`).toISOString();
-} else {
-  console.warn("⚠️ אין תאריך תקני – reminder_datetime נשאר ריק");
-  row.reminder_datetime = '';
-}
-
-
-
-
+  if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
+    const time = reminderHour + ':00';
+    row.reminder_datetime = new Date(`${row.due_date}T${time}Z`).toISOString();
+  } else {
+    console.warn("⚠️ אין תאריך תקני – reminder_datetime נשאר ריק");
+    row.reminder_datetime = '';
+  }
 
   console.log('🤖 תוצאה מ-GPT:', gptData);
   console.log('📋 שורה מעודכנת עם GPT + תזכורת:', row);
@@ -104,17 +98,14 @@ if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
 
   try {
     await saveToSheet(row);
-    console.log('✅ נשמר בהצלחה בגיליון!');
-    res.set('Content-Type', 'text/xml');
-    res.send(`<Response><Message>${responseMessage}</Message></Response>`);
+    await sendWhatsappMessage(phone, responseMessage);
+    res.sendStatus(200);
   } catch (err) {
-    console.error('❌ שגיאה בשמירה:', err);
-    console.log('📴 שולח תגובה עם שגיאה ללקוח:', phone);
+    console.error('❌ שגיאה בשמירה או שליחה:', err);
     res.sendStatus(500);
   }
 });
 
-// הפעלת השרת
 app.listen(PORT, () => {
   console.log(`🚀 שרת פעיל על פורט ${PORT}`);
 });
