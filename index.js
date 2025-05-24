@@ -21,16 +21,19 @@ async function saveToSheet(taskData) {
   await sheet.addRow(taskData);
 }
 
-app.post('/webhook', async (req, res) => {
-  const sender = req.body.senderData?.sender?.replace('@c.us', '') || '';
-  const chatId = req.body.senderData?.chatId?.replace('@c.us', '') || '';
-  const isGroup = req.body.senderData?.chatId?.endsWith('@g.us');
-  const isHistorical = req.body.typeWebhook !== 'incomingMessageReceived';
+let logCount = 0;
+const MAX_LOGS = 5;
 
-  // 📌 עיבוד רק אם אתה שלחת לעצמך הודעה חדשה
-  if (sender !== process.env.MY_PHONE || chatId !== process.env.MY_PHONE || isGroup || isHistorical) {
-    return res.sendStatus(200);
+app.post('/webhook', async (req, res) => {
+  if (logCount < MAX_LOGS) {
+    console.log(`🧪 לוג #${logCount + 1} - הודעה שהתקבלה:`);
+    console.log(JSON.stringify(req.body, null, 2));
+    logCount++;
   }
+
+  res.sendStatus(200);
+});
+
 
   console.log('📩 הודעה חדשה שאני שלחתי לעצמי!');
   console.log('📨 BODY:', JSON.stringify(req.body, null, 2));
@@ -87,7 +90,7 @@ app.post('/webhook', async (req, res) => {
     console.error('❌ שגיאה בשמירה:', err);
     res.sendStatus(500);
   }
-});
+
 
 app.listen(PORT, () => {
   console.log(`🚀 שרת פעיל על פורט ${PORT}`);
