@@ -1,13 +1,14 @@
-require('dotenv').config();
-const { GoogleSpreadsheet } = require('google-spreadsheet');
-const axios = require('axios');
+import dotenv from 'dotenv';
+import { GoogleSpreadsheet } from 'google-spreadsheet';
+import axios from 'axios';
 
-const GREEN_API_ID = process.env.GREEN_API_ID;
-const GREEN_API_TOKEN = process.env.GREEN_API_TOKEN;
+dotenv.config();
+
+const GREEN_API_ID = process.env.idInstance;
+const GREEN_API_TOKEN = process.env.apiTokenInstance;
 
 const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
 
-// פונקציה ששולחת הודעת וואטסאפ דרך Green API
 async function sendWhatsappMessage(phone, message) {
   try {
     await axios.post(`https://api.green-api.com/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`, {
@@ -20,10 +21,9 @@ async function sendWhatsappMessage(phone, message) {
   }
 }
 
-// ⏰ פונקציה שמריצה בדיקה כל דקה
 async function checkReminders() {
   try {
-    await doc.useServiceAccountAuth(require('/etc/secrets/credentials.json'));
+    await doc.useServiceAccountAuth(await import('/etc/secrets/credentials.json'));
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
     const rows = await sheet.getRows();
@@ -35,10 +35,8 @@ async function checkReminders() {
 
       const reminderTime = new Date(row.reminder_datetime);
       if (reminderTime <= now) {
-        const message = `🔔 תזכורת: ${row.task_name || 'משימה ללא שם'} \n📅 תאריך: ${row.due_date || 'לא צוין'} \n📁 קטגוריה: ${row.category || 'כללי'}`;
-
+        const message = `🔔 תזכורת: ${row.task_name || 'משימה ללא שם'}\n📅 תאריך: ${row.due_date || 'לא צוין'}\n📁 קטגוריה: ${row.category || 'כללי'}`;
         await sendWhatsappMessage(row.phone_number, message);
-
         row.was_sent = true;
         await row.save();
         console.log(`📥 עודכן שורה עם תזכורת ל-${row.phone_number}`);
@@ -49,5 +47,4 @@ async function checkReminders() {
   }
 }
 
-// הרצת הבדיקה כל דקה
 setInterval(checkReminders, 60 * 1000);

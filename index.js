@@ -1,21 +1,22 @@
-require('dotenv').config();
-const { analyzeMessageWithGPT } = require("./gpt");
-const express = require('express');
-const bodyParser = require('body-parser');
-const { GoogleSpreadsheet } = require('google-spreadsheet');
+import express from 'express';
+import bodyParser from 'body-parser';
+import { GoogleSpreadsheet } from 'google-spreadsheet';
+import { analyzeMessageWithGPT } from './gpt.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
-
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
 async function saveToSheet(taskData) {
   console.log('📥 נכנסנו לפונקציה saveToSheet');
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
-  await doc.useServiceAccountAuth(require('/etc/secrets/credentials.json'));
+  await doc.useServiceAccountAuth(await import('/etc/secrets/credentials.json'));
   await doc.loadInfo();
   const sheet = doc.sheetsByIndex[0];
   await sheet.addRow(taskData);
@@ -31,13 +32,7 @@ app.post('/webhook', async (req, res) => {
     logCount++;
   }
 
-  res.sendStatus(200);
-});
-
-
-  console.log('📩 הודעה חדשה שאני שלחתי לעצמי!');
-  console.log('📨 BODY:', JSON.stringify(req.body, null, 2));
-
+  const chatId = req.body.senderData?.chatId?.replace('@c.us', '') || '';
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
   const row = {
@@ -90,7 +85,7 @@ app.post('/webhook', async (req, res) => {
     console.error('❌ שגיאה בשמירה:', err);
     res.sendStatus(500);
   }
-
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 שרת פעיל על פורט ${PORT}`);

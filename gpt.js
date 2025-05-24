@@ -1,14 +1,16 @@
-require("dotenv").config();
-const OpenAI = require("openai");
+import OpenAI from 'openai';
+import dotenv from 'dotenv';
 
-console.log("🔑 API:", process.env.KEY_GPT); // הדפסה לבדוק אם המשתנה נטען
+dotenv.config();
+
+console.log("🔑 API:", process.env.KEY_GPT);
 
 const openai = new OpenAI({
   apiKey: process.env.KEY_GPT,
 });
 
-async function analyzeMessageWithGPT(message) {
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+export async function analyzeMessageWithGPT(message) {
+  const today = new Date().toISOString().split('T')[0];
 
   const prompt = `
 הודעה: "${message}"
@@ -19,20 +21,10 @@ async function analyzeMessageWithGPT(message) {
 1. task_name – ניסוח קצר וברור של המשימה שצריך לבצע.
 2. category – אחת מהקטגוריות: משפחה, זוגיות, עבודה, בריאות, חברים, רכב, לימודים, קניות, כללי.
 3. due_date – תאריך היעד (בפורמט YYYY-MM-DD). אם מופיע תאריך יחסי כמו "שבוע הבא ביום ראשון", חשב את התאריך לפי היום הנוכחי.
-4. frequency – אם נכתב במפורש או ניתן להבין תדירות (כמו כל שבוע, כל שנה וכו'), החזר:
-   - "יומי" אם זה כל יום.
-   - "שבועי" אם זה פעם בשבוע.
-   - "חודשי" אם זה פעם בחודש.
-   - "שנתי" אם זה נוגע ליום הולדת או אירוע שנתי.
-   - "חד פעמי" אם אין תדירות.
+4. frequency – אם נכתב במפורש או ניתן להבין תדירות, החזר: יומי / שבועי / חודשי / שנתי / חד פעמי
 
-📌 חשוב מאוד:
-- אם חסר מידע או לא ברור מה המשימה – רשום "לא זוהה" או שייך לקטגוריה "כללי".
-- אל תוסיף שום הסבר. החזר רק את ה־JSON.
-
-📅 היום הנוכחי הוא: ${today}  
-השתמש בזה כדי לחשב תאריכים כמו "שבוע הבא", "ביום ראשון", "בעוד שבועיים" וכו'.
-  `;
+📅 היום הנוכחי הוא: ${today}
+`;
 
   const completion = await openai.chat.completions.create({
     model: "gpt-3.5-turbo",
@@ -45,13 +37,6 @@ async function analyzeMessageWithGPT(message) {
     return JSON.parse(responseText);
   } catch (err) {
     console.error("❌ לא הצלחתי לפרש את תגובת GPT:", responseText);
-    return {
-      task_name: '',
-      category: '',
-      due_date: '',
-      frequency: ''
-    };
+    return { task_name: '', category: '', due_date: '', frequency: '' };
   }
 }
-
-module.exports = { analyzeMessageWithGPT };
