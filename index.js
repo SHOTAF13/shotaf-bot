@@ -1,3 +1,4 @@
+// index.js — גרסה מותאמת לפיילוט אישי בלבד
 require('dotenv').config();
 const { analyzeMessageWithGPT } = require("./gpt");
 const express = require('express');
@@ -13,14 +14,6 @@ const PORT = process.env.PORT || 10000;
 
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
-function extractReminderTime(text) {
-  const lowerText = text.toLowerCase();
-  if (lowerText.includes("בבוקר")) return "09:00:00";
-  if (lowerText.includes("בצהריים") || lowerText.includes("בצהרים") || lowerText.includes("צהריים")) return "12:00:00";
-  if (lowerText.includes("בערב")) return "19:00:00";
-  return "12:00:00";
-}
-
 async function saveToSheet(taskData) {
   console.log('📥 נכנסנו לפונקציה saveToSheet');
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
@@ -30,6 +23,7 @@ async function saveToSheet(taskData) {
   await sheet.addRow(taskData);
 }
 
+// הודעות יוצאות - מבוטל זמנית
 async function sendWhatsappMessage(phone, message) {
   try {
     await axios.post(`https://api.green-api.com/waInstance${process.env.idInstance}/sendMessage/${process.env.apiTokenInstance}`, {
@@ -43,22 +37,23 @@ async function sendWhatsappMessage(phone, message) {
 }
 
 app.post('/webhook', async (req, res) => {
-  const phone = req.body.senderData?.chatId?.replace('@c.us', '') || '';
+  const sender = req.body.senderData?.sender?.replace('@c.us', '') || '';
+  const chatId = req.body.senderData?.chatId?.replace('@c.us', '') || '';
 
-  if (phone !== process.env.MY_PHONE) {
-    return res.sendStatus(200); // מתעלם מהודעות לא ממני
+  // התנאי: רק אם אתה שולח לעצמך
+  if (sender !== process.env.MY_PHONE || chatId !== process.env.MY_PHONE) {
+    return res.sendStatus(200);
   }
 
-  console.log('📩 התקבלה הודעה חדשה ממני!');
+  console.log('📩 התקבלה הודעה שאני שלחתי לעצמי!');
   console.log('📨 BODY:', JSON.stringify(req.body, null, 2));
 
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
-
   const row = {
     task_id: 'tsk_' + Date.now(),
-    user_id: 'usr_' + phone.slice(-6),
-    phone_number: phone,
+    user_id: 'usr_' + chatId.slice(-6),
+    phone_number: chatId,
     original_text: message,
     task_name: '',
     category: '',
@@ -69,45 +64,44 @@ app.post('/webhook', async (req, res) => {
     created_at: new Date().toISOString(),
   };
 
-  console.log('🗃️ שורה שנבנתה מהודעה:', row);
-
-  const gptData = await analyzeMessageWithGPT(message);
-  row.task_name = gptData.task_name || '';
-  row.category = gptData.category || '';
-  row.due_date = gptData.due_date || '';
-  row.frequency = gptData.frequency || '';
-
-  let reminderHour = '12:00';
-  if (message.includes('בבוקר')) reminderHour = '09:00';
-  else if (message.includes('בערב')) reminderHour = '19:00';
-
-  if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-    const time = reminderHour + ':00';
-    row.reminder_datetime = new Date(`${row.due_date}T${time}Z`).toISOString();
-  } else {
-    console.warn("⚠️ אין תאריך תקני – reminder_datetime נשאר ריק");
-    row.reminder_datetime = '';
-  }
-
-  console.log('🤖 תוצאה מ-GPT:', gptData);
-  console.log('📋 שורה מעודכנת עם GPT + תזכורת:', row);
-
-  const responseMessage = `
-קיבלתי! ✅
-שם פעולה: ${row.task_name || 'לא זוהה'}
-קטגוריה: ${row.category || 'לא זוהתה'}
-תאריך יעד: ${row.due_date || 'לא צוין'}
-תדירות: ${row.frequency || 'חד־פעמי'}
-  `.trim();
-
   try {
+    const gptData = await analyzeMessageWithGPT(message);
+    row.task_name = gptData.task_name || '';
+    row.category = gptData.category || '';
+    row.due_date = gptData.due_date || '';
+    row.frequency = gptData.frequency || '';
+
+    let reminderHour = '12:00';
+    if (message.includes('בבוקר')) reminderHour = '09:00';
+    else if (message.includes('בערב')) reminderHour = '19:00';
+
+    if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
+      row.reminder_datetime = new Date(`${row.due_date}T${reminderHour}:00Z`).toISOString();
+    } else {
+      console.warn("⚠️ אין תאריך תקני – reminder_datetime נשאר ריק");
+      row.reminder_datetime = '';
+    }
+
+    console.log('🤖 תוצאה מ-GPT:', gptData);
+    console.log('📋 שורה מעודכנת עם GPT + תזכורת:', row);
+
     await saveToSheet(row);
-    if (phone === process.env.MY_PHONE) {
-      await sendWhatsappMessage(phone, responseMessage);
-      }
+
+    /*
+    const responseMessage = `
+    קיבלתי! ✅
+    שם פעולה: ${row.task_name || 'לא זוהה'}
+    קטגוריה: ${row.category || 'לא זוהתה'}
+    תאריך יעד: ${row.due_date || 'לא צוין'}
+    תדירות: ${row.frequency || 'חד־פעמי'}
+    `.trim();
+
+    await sendWhatsappMessage(chatId, responseMessage);
+    */
+
     res.sendStatus(200);
   } catch (err) {
-    console.error('❌ שגיאה בשמירה או שליחה:', err);
+    console.error('❌ שגיאה בתהליך:', err);
     res.sendStatus(500);
   }
 });
