@@ -13,7 +13,7 @@ async function sendWhatsappMessage(phone, message) {
   try {
     await axios.post(`https://api.green-api.com/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`, {
       chatId: phone.replace('+', '') + "@c.us",
-      message: message
+      message
     });
     console.log("📤 הודעה נשלחה ל-", phone);
   } catch (err) {
@@ -23,7 +23,8 @@ async function sendWhatsappMessage(phone, message) {
 
 async function checkReminders() {
   try {
-    await doc.useServiceAccountAuth(await import('/etc/secrets/credentials.json'));
+    const credentials = (await import('/etc/secrets/credentials.json', { assert: { type: 'json' } })).default;
+    await doc.useServiceAccountAuth(credentials);
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
     const rows = await sheet.getRows();

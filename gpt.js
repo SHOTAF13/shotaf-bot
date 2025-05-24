@@ -3,8 +3,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-console.log("🔑 API:", process.env.KEY_GPT);
-
 const openai = new OpenAI({
   apiKey: process.env.KEY_GPT,
 });

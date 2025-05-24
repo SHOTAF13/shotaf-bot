@@ -16,7 +16,8 @@ console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 async function saveToSheet(taskData) {
   console.log('📥 נכנסנו לפונקציה saveToSheet');
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
-  await doc.useServiceAccountAuth(await import('/etc/secrets/credentials.json'));
+  const credentials = (await import('/etc/secrets/credentials.json', { assert: { type: 'json' } })).default;
+  await doc.useServiceAccountAuth(credentials);
   await doc.loadInfo();
   const sheet = doc.sheetsByIndex[0];
   await sheet.addRow(taskData);
@@ -26,13 +27,19 @@ let logCount = 0;
 const MAX_LOGS = 5;
 
 app.post('/webhook', async (req, res) => {
+  const sender = req.body.senderData?.sender?.replace('@c.us', '') || '';
+  const chatId = req.body.senderData?.chatId?.replace('@c.us', '') || '';
+
+  if (sender !== process.env.MY_PHONE || chatId !== process.env.MY_PHONE) {
+    return res.sendStatus(200); // מתעלם מהודעות לא ממני לעצמי
+  }
+
   if (logCount < MAX_LOGS) {
     console.log(`🧪 לוג #${logCount + 1} - הודעה שהתקבלה:`);
     console.log(JSON.stringify(req.body, null, 2));
     logCount++;
   }
 
-  const chatId = req.body.senderData?.chatId?.replace('@c.us', '') || '';
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
   const row = {
@@ -54,7 +61,7 @@ app.post('/webhook', async (req, res) => {
   let gptData = { task_name: '', category: '', due_date: '', frequency: '' };
   try {
     gptData = await analyzeMessageWithGPT(message);
-  } catch (e) {
+  } catch {
     console.warn("⚠️ GPT נכשל – מחזיר שדות ריקים");
   }
 
