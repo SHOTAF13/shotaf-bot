@@ -3,6 +3,7 @@ import bodyParser from 'body-parser';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { analyzeMessageWithGPT } from './gpt.js';
 import dotenv from 'dotenv';
+import credentials from '/etc/secrets/credentials.json' assert { type: 'json' };
 
 dotenv.config();
 
@@ -13,35 +14,32 @@ app.use(bodyParser.urlencoded({ extended: false }));
 const PORT = process.env.PORT || 10000;
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
+// שמירת משימה בגוגל שיט
 async function saveToSheet(taskData) {
   console.log('📥 נכנסנו לפונקציה saveToSheet');
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
-  const credentials = (await import('/etc/secrets/credentials.json', { assert: { type: 'json' } })).default;
   await doc.useServiceAccountAuth(credentials);
   await doc.loadInfo();
   const sheet = doc.sheetsByIndex[0];
   await sheet.addRow(taskData);
 }
 
-let logCount = 0;
-const MAX_LOGS = 5;
-
+// אין מגבלת לוגים - כל הודעה תודפס
 app.post('/webhook', async (req, res) => {
   const sender = req.body.senderData?.sender?.replace('@c.us', '') || '';
-  const chatId = req.body.senderData?.chatId?.replace('@c.us', '') || '';
-
-  if (sender !== process.env.MY_PHONE || chatId !== process.env.MY_PHONE) {
-    return res.sendStatus(200); // מתעלם מהודעות לא ממני לעצמי
-  }
-
-  if (logCount < MAX_LOGS) {
-    console.log(`🧪 לוג #${logCount + 1} - הודעה שהתקבלה:`);
-    console.log(JSON.stringify(req.body, null, 2));
-    logCount++;
-  }
-
+  const chatId = req.body.senderData?.chatId?.replace(/(@c\.us|@g\.us)/, '') || '';
+  const isGroup = req.body.senderData?.chatId?.endsWith('@g.us');
+  const isHistorical = req.body.typeWebhook !== 'incomingMessageReceived';
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
+  console.log('🟢 הודעה חדשה:');
+  console.log(`👤 שולח: ${sender}`);
+  console.log(`💬 תוכן: ${message}`);
+  console.log(`👥 קבוצה: ${isGroup}`);
+  console.log(`⏳ היסטורית: ${isHistorical}`);
+  console.log(`📦 body:`, JSON.stringify(req.body, null, 2));
+
+  // השורה לשמירה בגוגל שיט
   const row = {
     task_id: 'tsk_' + Date.now(),
     user_id: 'usr_' + chatId.slice(-6),
@@ -58,10 +56,12 @@ app.post('/webhook', async (req, res) => {
 
   console.log('🗃️ שורה שנבנתה מהודעה:', row);
 
+  // 🔕 ניתוח GPT + שליחת תגובה - בהערה בשלב זה
+  /*
   let gptData = { task_name: '', category: '', due_date: '', frequency: '' };
   try {
     gptData = await analyzeMessageWithGPT(message);
-  } catch {
+  } catch (e) {
     console.warn("⚠️ GPT נכשל – מחזיר שדות ריקים");
   }
 
@@ -79,7 +79,6 @@ app.post('/webhook', async (req, res) => {
     row.reminder_datetime = new Date(`${row.due_date}T${time}Z`).toISOString();
   } else {
     console.warn("⚠️ אין תאריך תקני – reminder_datetime נשאר ריק");
-    row.reminder_datetime = '';
   }
 
   console.log('🤖 תוצאה מ-GPT:', gptData);
@@ -87,11 +86,12 @@ app.post('/webhook', async (req, res) => {
 
   try {
     await saveToSheet(row);
-    res.sendStatus(200);
   } catch (err) {
     console.error('❌ שגיאה בשמירה:', err);
-    res.sendStatus(500);
   }
+  */
+
+  res.sendStatus(200);
 });
 
 app.listen(PORT, () => {
