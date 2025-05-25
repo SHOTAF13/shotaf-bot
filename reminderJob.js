@@ -1,19 +1,20 @@
 import dotenv from 'dotenv';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import axios from 'axios';
+import fs from 'fs';
 
 dotenv.config();
 
 const GREEN_API_ID = process.env.idInstance;
 const GREEN_API_TOKEN = process.env.apiTokenInstance;
-
+const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
 const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
 
 async function sendWhatsappMessage(phone, message) {
   try {
     await axios.post(`https://api.green-api.com/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`, {
-      chatId: phone.replace('+', '') + "@c.us",
-      message
+      chatId: phone + "@c.us",
+      message: message
     });
     console.log("📤 הודעה נשלחה ל-", phone);
   } catch (err) {
@@ -23,7 +24,6 @@ async function sendWhatsappMessage(phone, message) {
 
 async function checkReminders() {
   try {
-    const credentials = (await import('/etc/secrets/credentials.json', { assert: { type: 'json' } })).default;
     await doc.useServiceAccountAuth(credentials);
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
@@ -36,8 +36,10 @@ async function checkReminders() {
 
       const reminderTime = new Date(row.reminder_datetime);
       if (reminderTime <= now) {
-        const message = `🔔 תזכורת: ${row.task_name || 'משימה ללא שם'}\n📅 תאריך: ${row.due_date || 'לא צוין'}\n📁 קטגוריה: ${row.category || 'כללי'}`;
+        const message = `🔔 תזכורת:\n${row.original_text || 'משימה ללא תוכן'}`;
+
         await sendWhatsappMessage(row.phone_number, message);
+
         row.was_sent = true;
         await row.save();
         console.log(`📥 עודכן שורה עם תזכורת ל-${row.phone_number}`);
