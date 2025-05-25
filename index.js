@@ -12,15 +12,12 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
-
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
-// טוען את credentials.json מקובץ סודי ב־Render
 const credentials = JSON.parse(
   fs.readFileSync('/etc/secrets/credentials.json', 'utf-8')
 );
 
-// שמירה ל־Google Sheet
 async function saveToSheet(taskData) {
   console.log('📥 נכנסנו לפונקציה saveToSheet');
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
@@ -31,16 +28,30 @@ async function saveToSheet(taskData) {
 }
 
 app.post('/webhook', async (req, res) => {
-  console.log('📨 הודעה חדשה התקבלה!');
+  const type = req.body.typeWebhook;
+  const sender = req.body.senderData?.sender;
+  const chatId = req.body.senderData?.chatId;
+  const message = req.body.messageData?.textMessageData?.textMessage || '';
+
+  const isSelfMessage =
+    (type === 'outgoingMessageReceived' || type === 'outgoingAPIMessageReceived') &&
+    sender === chatId &&
+    sender?.includes(process.env.MY_PHONE);
+
+  if (!isSelfMessage) {
+    console.log(`📥 התקבלה הודעה שלא מעצמי – מדלג`);
+    return res.sendStatus(200);
+  }
+
+  console.log('📤 הודעה שאני שלחתי לעצמי!');
   console.log(JSON.stringify(req.body, null, 2));
 
-  const chatId = req.body.senderData?.chatId?.replace('@c.us', '') || '';
-  const message = req.body.messageData?.textMessageData?.textMessage || '';
+  const phone = chatId.replace('@c.us', '');
 
   const row = {
     task_id: 'tsk_' + Date.now(),
-    user_id: 'usr_' + chatId.slice(-6),
-    phone_number: chatId,
+    user_id: 'usr_' + phone.slice(-6),
+    phone_number: phone,
     original_text: message,
     task_name: '',
     category: '',
