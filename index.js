@@ -53,8 +53,8 @@ app.post('/webhook', async (req, res) => {
     sender?.includes(process.env.MY_PHONE);
 
   const isSummaryMessage = message.startsWith("קלטתי את המשימה");
-  if (!isSelfMessage) {
-    console.log(`📥 התקבלה הודעה שלא מעצמי – מדלג`);
+  if (!isSelfMessage || isSummaryMessage) {
+    console.log(`📥 התקבלה הודעה שלא מעצמי או הודעה סיכום – מדלג`);
     return res.sendStatus(200);
   }
 
