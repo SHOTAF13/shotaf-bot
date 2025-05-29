@@ -31,23 +31,18 @@ async function checkReminders() {
     const rows = await sheet.getRows();
 
     const now = new Date();
-    console.log(`🕒 התחלת לולאת בדיקה - זמן נוכחי: ${now.toISOString()}`);
+    console.log(`🕒 התחלת לולאת בדיקה - זמן נוכחי (UTC): ${now.toISOString()}`);
 
     for (const row of rows) {
-      console.log("🔍 בודק שורה:", {
-        reminder_datetime: row.reminder_datetime,
-        was_sent: row.was_sent,
-        phone_number: row.phone_number
-      });
+      const reminderTime = new Date(row.reminder_datetime);
 
       if (!row.reminder_datetime || row.was_sent === 'TRUE') {
-        console.log("⏭️ דילוג על שורה – תזכורת ריקה או כבר נשלחה");
         continue;
       }
 
-      const reminderTime = new Date(row.reminder_datetime);
       if (reminderTime <= now) {
-        const message = `🔔 תזכורת:\n${row.original_text || 'משימה ללא תוכן'}`;
+        const message = `🔔 תזכורת:
+${row.original_text || 'משימה ללא תוכן'}`;
         console.log(`📨 שולח תזכורת ל-${row.phone_number} | תוכן: ${message}`);
 
         await sendWhatsappMessage(row.phone_number, message);
@@ -56,7 +51,7 @@ async function checkReminders() {
         await row.save();
         console.log(`✅ עודכן שורה - סומן שנשלחה (${row.phone_number})`);
       } else {
-        console.log(`⏳ עדיין לא הגיע הזמן (${row.reminder_datetime})`);
+        console.log(`⏳ עדיין לא הגיע הזמן. תזכורת ב: ${reminderTime.toISOString()} | עכשיו: ${now.toISOString()}`);
       }
     }
   } catch (err) {

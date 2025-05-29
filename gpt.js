@@ -34,19 +34,32 @@ export async function analyzeMessageWithGPT(message) {
   "frequency": "חד פעמי",
   "reminder_time": "09:00"
 }
-`;
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4.1-nano-2025-04-14",
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const responseText = completion.choices[0].message.content;
+`.trim();
 
   try {
-    return JSON.parse(responseText);
-  } catch (err) {
-    console.error("❌ לא הצלחתי לפרש את תגובת GPT:", responseText);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4.1-nano-2025-04-14",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const responseText = completion.choices[0]?.message?.content || '';
+    console.log("📤 תגובת GPT:", responseText);
+
+    try {
+      const parsed = JSON.parse(responseText);
+      return parsed;
+    } catch (err) {
+      console.error("❌ לא הצלחתי לפרש את תגובת GPT כ־JSON:", responseText);
+      return {
+        task_name: '',
+        category: '',
+        due_date: '',
+        frequency: '',
+        reminder_time: '12:00'
+      };
+    }
+  } catch (apiError) {
+    console.error("❌ שגיאה מה־API של GPT:", apiError.message || apiError);
     return {
       task_name: '',
       category: '',
