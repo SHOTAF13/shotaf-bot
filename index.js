@@ -108,7 +108,7 @@ app.post('/webhook', async (req, res) => {
     await saveToSheet(row);
 
     const reply = `
-💡 קלטתי את המשימה:
+קלטתי את המשימה:
 
 📝 משימה: ${row.task_name || 'לא זוהתה'}
 📁 קטגוריה: ${row.category || 'כללי'}
