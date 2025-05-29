@@ -7,6 +7,28 @@ const openai = new OpenAI({
   apiKey: process.env.KEY_GPT,
 });
 
+function parseHebrewWeekdayToDate(text) {
+  const days = {
+    'יום ראשון': 0,
+    'יום שני': 1,
+    'יום שלישי': 2,
+    'יום רביעי': 3,
+    'יום חמישי': 4,
+    'יום שישי': 5,
+    'יום שבת': 6
+  };
+  for (const [label, dayIndex] of Object.entries(days)) {
+    if (text.includes(label)) {
+      const now = new Date();
+      const result = new Date(now);
+      const diff = (dayIndex + 7 - now.getDay()) % 7 || 7;
+      result.setDate(now.getDate() + diff);
+      return result.toISOString().split('T')[0];
+    }
+  }
+  return '';
+}
+
 export async function analyzeMessageWithGPT(message) {
   const today = new Date().toISOString().split('T')[0];
 
