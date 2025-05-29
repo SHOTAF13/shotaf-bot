@@ -21,7 +21,7 @@ const USERS = [
   }
 ];
 
-const credentials = JSON.parse(fs.readFileSync('./credentials.json', 'utf-8'));
+const credentials = JSON.parse(fs.readFileSync('./google-creds.json', 'utf-8'));
 const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
 
 async function sendWhatsappMessage(user, phone, message) {
