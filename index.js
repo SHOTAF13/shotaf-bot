@@ -50,6 +50,11 @@ app.post('/webhook', async (req, res) => {
 
   const MY_PHONE_ID = `972${process.env.MY_PHONE?.replace(/^0/, '')}@c.us`;
   const isFromSelfToSelf = sender === MY_PHONE_ID && chatId === MY_PHONE_ID;
+  console.log("💬 sender:", sender);
+  console.log("💬 chatId:", chatId);
+  console.log("📱 MY_PHONE_ID:", MY_PHONE_ID);
+  console.log("💬 message:", message);
+
 
   // נבדוק אם זו הודעה מטקסט אמיתי, שנשלחה ממני לעצמי
   const isValid = (type === "outgoingMessageReceived") && isFromSelfToSelf && message.trim();
