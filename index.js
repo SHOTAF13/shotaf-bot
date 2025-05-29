@@ -13,19 +13,20 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
+const GREEN_API_ID = process.env.idInstance;
+const GREEN_API_TOKEN = process.env.apiTokenInstance;
+const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
+
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
-const credentials = JSON.parse(
-  fs.readFileSync('/etc/secrets/credentials.json', 'utf-8')
-);
-
+// שליחת הודעת וואטסאפ
 async function sendWhatsappMessage(phone, message) {
   try {
-    await axios.post(`https://api.green-api.com/waInstance${process.env.idInstance}/sendMessage/${process.env.apiTokenInstance}`, {
+    await axios.post(`https://api.green-api.com/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`, {
       chatId: phone + "@c.us",
       message: message
     });
-    console.log("📤 הודעה נשלחה ל-", phone);
+    console.log("📤 נשלחה תגובה למשתמש:", message);
   } catch (err) {
     console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
   }
@@ -51,8 +52,9 @@ app.post('/webhook', async (req, res) => {
     sender === chatId &&
     sender?.includes(process.env.MY_PHONE);
 
-  if (!isSelfMessage) {
-    console.log(`📥 התקבלה הודעה שלא מעצמי – מדלג`);
+  const isSummaryMessage = message.startsWith("קלטתי את המשימה");
+  if (!isSelfMessage || isSummaryMessage) {
+    console.log(`📥 התקבלה הודעה שלא מעצמי או הודעה סיכום – מדלג`);
     return res.sendStatus(200);
   }
 
@@ -85,9 +87,9 @@ app.post('/webhook', async (req, res) => {
   }
 
   row.task_name = gptData.task_name || '';
-  row.category = gptData.category || 'כללי';
+  row.category = gptData.category || '';
   row.due_date = gptData.due_date || '';
-  row.frequency = gptData.frequency || 'חד פעמי';
+  row.frequency = gptData.frequency || '';
 
   let reminderHour = '12:00';
   if (message.includes('בבוקר')) reminderHour = '09:00';
@@ -106,23 +108,23 @@ app.post('/webhook', async (req, res) => {
 
   try {
     await saveToSheet(row);
-  } catch (err) {
-    console.error('❌ שגיאה בשמירה:', err);
-    return res.sendStatus(500);
-  }
 
-  const reply = `💡 קלטתי את המשימה:
+    const reply = `
+💡 קלטתי את המשימה:
+
 📝 משימה: ${row.task_name || 'לא זוהתה'}
 📁 קטגוריה: ${row.category || 'כללי'}
 📅 תאריך יעד: ${row.due_date || 'לא צוין'}
 🔁 תדירות: ${row.frequency || 'חד פעמי'}
-⏰ תזכורת תישלח ב־: ${row.reminder_datetime ? new Date(row.reminder_datetime).toLocaleString('he-IL') : 'לא נקבעה'}
-`;
+⏰ תזכורת תישלח ב־: ${row.reminder_datetime ? new Date(row.reminder_datetime).toLocaleString("he-IL") : 'לא נקבעה'}
+`.trim();
 
-  await sendWhatsappMessage(phone, reply);
-  console.log("📤 נשלחה תגובה למשתמש:", reply);
-
-  res.sendStatus(200);
+    await sendWhatsappMessage(phone, reply);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('❌ שגיאה בשמירה או בשליחה:', err);
+    res.sendStatus(500);
+  }
 });
 
 app.listen(PORT, () => {
