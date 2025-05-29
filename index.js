@@ -17,6 +17,11 @@ const GREEN_API_ID = process.env.idInstance;
 const GREEN_API_TOKEN = process.env.apiTokenInstance;
 const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
 
+// נרמול מספר טלפון ממך לעצמך
+const rawPhone = process.env.MY_PHONE || '';
+const MY_PHONE_CLEAN = rawPhone.replace(/^0/, '').replace(/^972/, '');
+const MY_PHONE_ID = `972${MY_PHONE_CLEAN}@c.us`;
+
 // שליחת הודעת וואטסאפ
 async function sendWhatsappMessage(phone, message) {
   try {
@@ -46,7 +51,7 @@ app.post('/webhook', async (req, res) => {
 
   const type = req.body.typeWebhook;
 
-  // עוצר אם זו לא הודעת משתמש (יוצאת ממך עצמך)
+  // סינון ראשוני לפי סוג ההודעה
   if (type !== "outgoingMessageReceived") {
     console.log("⛔️ לא outgoingMessageReceived – מתעלם");
     return res.sendStatus(200);
@@ -56,7 +61,6 @@ app.post('/webhook', async (req, res) => {
   const chatId = req.body.senderData?.chatId;
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
-  const MY_PHONE_ID = `972${process.env.MY_PHONE?.replace(/^0/, '')}@c.us`;
   const isFromSelfToSelf = sender === MY_PHONE_ID && chatId === MY_PHONE_ID;
 
   console.log("💬 sender:", sender);
