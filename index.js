@@ -47,18 +47,14 @@ app.post('/webhook', async (req, res) => {
   const chatId = req.body.senderData?.chatId;
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
-  const isSelfMessage =
-    (type === 'outgoingMessageReceived' || type === 'outgoingAPIMessageReceived') &&
-    sender === chatId &&
-    sender?.includes(process.env.MY_PHONE);
+  // ✅ התנאי הקריטי: רק אם אתה שולח לעצמך ולא הודעת סיכום
+  const isFromMyself = sender?.includes(process.env.MY_PHONE) && chatId?.includes(process.env.MY_PHONE);
+  const isSummaryMessage = message.startsWith("קלטתי את המשימה");
 
-const isSummaryMessage = message.startsWith("קלטתי את המשימה");
-
-if (type !== 'incomingMessageReceived' || isSummaryMessage) {
-  console.log('📤 ⛔ מתעלם מהודעה שאינה הודעת משתמש או סיכום');
-  return res.sendStatus(200);
-}
-
+  if (!isFromMyself || isSummaryMessage) {
+    console.log('⛔ הודעה לא ממני לעצמי או הודעת סיכום – מדלג');
+    return res.sendStatus(200);
+  }
 
   console.log('📤 הודעה שאני שלחתי לעצמי!');
   console.log(JSON.stringify(req.body, null, 2));
