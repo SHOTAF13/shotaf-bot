@@ -52,11 +52,13 @@ app.post('/webhook', async (req, res) => {
     sender === chatId &&
     sender?.includes(process.env.MY_PHONE);
 
-  const isSummaryMessage = message.startsWith("קלטתי את המשימה");
-  if (!isSelfMessage || isSummaryMessage) {
-    console.log(`📥 התקבלה הודעה שלא מעצמי או הודעה סיכום – מדלג`);
-    return res.sendStatus(200);
-  }
+const isSummaryMessage = message.startsWith("קלטתי את המשימה");
+
+if (type !== 'incomingMessageReceived' || isSummaryMessage) {
+  console.log('📤 ⛔ מתעלם מהודעה שאינה הודעת משתמש או סיכום');
+  return res.sendStatus(200);
+}
+
 
   console.log('📤 הודעה שאני שלחתי לעצמי!');
   console.log(JSON.stringify(req.body, null, 2));
