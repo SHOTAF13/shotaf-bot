@@ -17,14 +17,12 @@ const GREEN_API_ID = process.env.idInstance;
 const GREEN_API_TOKEN = process.env.apiTokenInstance;
 const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
 
-// נרמול מספר טלפון ממך לעצמך
 const rawPhone = process.env.MY_PHONE || '';
 const MY_PHONE_CLEAN = rawPhone
   .replace(/^972/, '')
   .replace(/^0/, '');
 const MY_PHONE_ID = `972${MY_PHONE_CLEAN}@c.us`;
 
-// שליחת הודעת וואטסאפ
 async function sendWhatsappMessage(phone, message) {
   try {
     const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
@@ -38,7 +36,6 @@ async function sendWhatsappMessage(phone, message) {
   }
 }
 
-// שמירה ל־Google Sheets
 async function saveToSheet(taskData) {
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
   await doc.useServiceAccountAuth(credentials);
@@ -48,33 +45,23 @@ async function saveToSheet(taskData) {
 }
 
 app.post('/webhook', async (req, res) => {
-  console.log('📨 קיבלתי הודעה מה-Webhook:');
-  console.log(JSON.stringify(req.body, null, 2));
-
   const type = req.body.typeWebhook;
-
   if (type !== "outgoingMessageReceived") {
-    console.log("⛔️ לא outgoingMessageReceived – מתעלם");
     return res.sendStatus(200);
   }
 
   const sender = req.body.senderData?.sender;
   const chatId = req.body.senderData?.chatId;
   const message = req.body.messageData?.textMessageData?.textMessage || '';
-
   const isFromSelfToSelf = sender === MY_PHONE_ID && chatId === MY_PHONE_ID;
 
-  console.log("💬 sender:", sender);
-  console.log("💬 chatId:", chatId);
-  console.log("📱 MY_PHONE_ID:", MY_PHONE_ID);
-  console.log("💬 message:", message);
-
   if (!isFromSelfToSelf || !message.trim()) {
-    console.log("⛔️ לא הודעה ממני לעצמי או הודעה ריקה – מדלג");
     return res.sendStatus(200);
   }
 
-  console.log('✅ הודעה מזוהה כמשימה ממני לעצמי – ממשיך לעיבוד...');
+  // רק הודעות רלוונטיות יודפסו
+  console.log('📨 קיבלתי הודעה רלוונטית!');
+  console.log(JSON.stringify(req.body, null, 2));
 
   const phone = chatId.replace('@c.us', '');
   const row = {
