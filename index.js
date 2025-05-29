@@ -42,29 +42,30 @@ async function saveToSheet(taskData) {
 }
 
 app.post('/webhook', async (req, res) => {
-const type = req.body.typeWebhook;
-
-if (type !== "incomingMessageReceived") {
-  console.log("⛔️ לא הודעת משתמש נכנסת - מתעלם");
-  return res.sendStatus(200);
-}
-
-const sender = req.body.senderData?.sender;
-const chatId = req.body.senderData?.chatId;
-const message = req.body.messageData?.textMessageData?.textMessage || '';
-
-const isFromMyself = sender?.includes(process.env.MY_PHONE) && chatId?.includes(process.env.MY_PHONE);
-const isSummaryMessage = message.startsWith("קלטתי את המשימה");
-
-if (!isFromMyself || isSummaryMessage) {
-  console.log('⛔️ הודעה לא ממני לעצמי או הודעת סיכום – מדלג');
-  return res.sendStatus(200);
-}
-
-
-  console.log('📤 הודעה שאני שלחתי לעצמי!');
+  console.log('📨 קיבלתי הודעה חדשה מה־Webhook:');
   console.log(JSON.stringify(req.body, null, 2));
 
+  const type = req.body.typeWebhook;
+  const sender = req.body.senderData?.sender;
+  const chatId = req.body.senderData?.chatId;
+  const message = req.body.messageData?.textMessageData?.textMessage || '';
+
+  const MY_PHONE_ID = `972${process.env.MY_PHONE?.replace(/^0/, '')}@c.us`;
+  const isFromMyself = sender === MY_PHONE_ID && chatId === MY_PHONE_ID;
+  const isSummaryMessage = message.startsWith("קלטתי את המשימה");
+
+  // סינון הודעות לא רלוונטיות
+  if (type !== "incomingMessageReceived" || !message.trim()) {
+    console.log("⛔️ הודעה ללא טקסט או מסוג לא מתאים – מדלג");
+    return res.sendStatus(200);
+  }
+
+  if (!isFromMyself || isSummaryMessage) {
+    console.log('⛔️ הודעה לא ממני לעצמי או הודעת סיכום – מדלג');
+    return res.sendStatus(200);
+  }
+
+  console.log('📤 הודעה שאני שלחתי לעצמי!');
   const phone = chatId.replace('@c.us', '');
 
   const row = {
