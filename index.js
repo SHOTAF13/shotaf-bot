@@ -17,8 +17,6 @@ const GREEN_API_ID = process.env.idInstance;
 const GREEN_API_TOKEN = process.env.apiTokenInstance;
 const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
 
-console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
-
 // שליחת הודעת וואטסאפ
 async function sendWhatsappMessage(phone, message) {
   try {
@@ -32,8 +30,8 @@ async function sendWhatsappMessage(phone, message) {
   }
 }
 
+// שמירה לגוגל שיט
 async function saveToSheet(taskData) {
-  console.log('📥 נכנסנו לפונקציה saveToSheet');
   const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
   await doc.useServiceAccountAuth(credentials);
   await doc.loadInfo();
@@ -42,7 +40,7 @@ async function saveToSheet(taskData) {
 }
 
 app.post('/webhook', async (req, res) => {
-  console.log('📨 קיבלתי הודעה חדשה מה־Webhook:');
+  console.log('📨 קיבלתי הודעה מה-Webhook:');
   console.log(JSON.stringify(req.body, null, 2));
 
   const type = req.body.typeWebhook;
@@ -51,23 +49,19 @@ app.post('/webhook', async (req, res) => {
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
   const MY_PHONE_ID = `972${process.env.MY_PHONE?.replace(/^0/, '')}@c.us`;
-  const isFromMyself = sender === MY_PHONE_ID && chatId === MY_PHONE_ID;
-  const isSummaryMessage = message.startsWith("קלטתי את המשימה");
+  const isFromSelfToSelf = sender === MY_PHONE_ID && chatId === MY_PHONE_ID;
 
-  // סינון הודעות לא רלוונטיות
-  if (type !== "incomingMessageReceived" || !message.trim()) {
-    console.log("⛔️ הודעה ללא טקסט או מסוג לא מתאים – מדלג");
+  // נבדוק אם זו הודעה מטקסט אמיתי, שנשלחה ממני לעצמי
+  const isValid = (type === "outgoingMessageReceived") && isFromSelfToSelf && message.trim();
+
+  if (!isValid) {
+    console.log("⛔️ לא הודעת טקסט ממני לעצמי – מדלג");
     return res.sendStatus(200);
   }
 
-  if (!isFromMyself || isSummaryMessage) {
-    console.log('⛔️ הודעה לא ממני לעצמי או הודעת סיכום – מדלג');
-    return res.sendStatus(200);
-  }
+  console.log('✅ הודעה מזוהה כמשימה ממני לעצמי – מעבד...');
 
-  console.log('📤 הודעה שאני שלחתי לעצמי!');
   const phone = chatId.replace('@c.us', '');
-
   const row = {
     task_id: 'tsk_' + Date.now(),
     user_id: 'usr_' + phone.slice(-6),
@@ -82,34 +76,28 @@ app.post('/webhook', async (req, res) => {
     created_at: new Date().toISOString(),
   };
 
-  console.log('🗃️ שורה שנבנתה מהודעה:', row);
+  let gptData = {
+    task_name: '',
+    category: '',
+    due_date: '',
+    frequency: '',
+    reminder_time: '12:00'
+  };
 
-  let gptData = { task_name: '', category: '', due_date: '', frequency: '' };
   try {
     gptData = await analyzeMessageWithGPT(message);
-  } catch {
+  } catch (err) {
     console.warn("⚠️ GPT נכשל – מחזיר שדות ריקים");
   }
 
-  row.task_name = gptData.task_name || '';
-  row.category = gptData.category || '';
-  row.due_date = gptData.due_date || '';
-  row.frequency = gptData.frequency || 'חד פעמי';
-
-  let reminderHour = '12:00';
-  if (message.includes('בבוקר')) reminderHour = '09:00';
-  else if (message.includes('בערב')) reminderHour = '19:00';
+  row.task_name = gptData.task_name;
+  row.category = gptData.category;
+  row.due_date = gptData.due_date;
+  row.frequency = gptData.frequency;
 
   if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-    const time = reminderHour + ':00';
-    row.reminder_datetime = new Date(`${row.due_date}T${time}Z`).toISOString();
-  } else {
-    console.warn("⚠️ אין תאריך תקני – reminder_datetime נשאר ריק");
-    row.reminder_datetime = '';
+    row.reminder_datetime = new Date(`${row.due_date}T${gptData.reminder_time}:00Z`).toISOString();
   }
-
-  console.log('🤖 תוצאה מ-GPT:', gptData);
-  console.log('📋 שורה מעודכנת עם GPT + תזכורת:', row);
 
   try {
     await saveToSheet(row);
