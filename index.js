@@ -42,19 +42,25 @@ async function saveToSheet(taskData) {
 }
 
 app.post('/webhook', async (req, res) => {
-  const type = req.body.typeWebhook;
-  const sender = req.body.senderData?.sender;
-  const chatId = req.body.senderData?.chatId;
-  const message = req.body.messageData?.textMessageData?.textMessage || '';
+const type = req.body.typeWebhook;
 
-  const isFromMyself = sender?.includes(process.env.MY_PHONE) && chatId?.includes(process.env.MY_PHONE);
-  const isSummaryMessage = message.startsWith("קלטתי את המשימה");
+if (type !== "incomingMessageReceived") {
+  console.log("⛔️ לא הודעת משתמש נכנסת - מתעלם");
+  return res.sendStatus(200);
+}
 
-  // סינון הודעות לולאתיות - אם זו הודעת סיכום שהמערכת שלחה
-  if (!isFromMyself || isSummaryMessage) {
-    console.log('⛔ הודעה לא ממני לעצמי או הודעת סיכום – מדלג');
-    return res.sendStatus(200);
-  }
+const sender = req.body.senderData?.sender;
+const chatId = req.body.senderData?.chatId;
+const message = req.body.messageData?.textMessageData?.textMessage || '';
+
+const isFromMyself = sender?.includes(process.env.MY_PHONE) && chatId?.includes(process.env.MY_PHONE);
+const isSummaryMessage = message.startsWith("קלטתי את המשימה");
+
+if (!isFromMyself || isSummaryMessage) {
+  console.log('⛔️ הודעה לא ממני לעצמי או הודעת סיכום – מדלג');
+  return res.sendStatus(200);
+}
+
 
   console.log('📤 הודעה שאני שלחתי לעצמי!');
   console.log(JSON.stringify(req.body, null, 2));
