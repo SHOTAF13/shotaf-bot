@@ -13,15 +13,27 @@ export async function analyzeMessageWithGPT(message) {
   const prompt = `
 הודעה: "${message}"
 
-אתה מקבל הודעה חופשית שכתובה בעברית.  
-המטרה שלך היא לנתח את ההודעה ולהחזיר מידע במבנה JSON מדויק עם ארבעה שדות בלבד:
+המטרה שלך היא לנתח את ההודעה החופשית בעברית, ולהחזיר מידע במבנה JSON מדויק עם חמישה שדות בלבד:
 
-1. task_name – ניסוח קצר וברור של המשימה שצריך לבצע.
-2. category – אחת מהקטגוריות: משפחה, זוגיות, עבודה, בריאות, חברים, רכב, לימודים, קניות, כללי.
-3. due_date – תאריך היעד (בפורמט YYYY-MM-DD). אם מופיע תאריך יחסי כמו "שבוע הבא ביום ראשון", חשב את התאריך לפי היום הנוכחי.
-4. frequency – אם נכתב במפורש או ניתן להבין תדירות, החזר: יומי / שבועי / חודשי / שנתי / חד פעמי
+1. task_name – ניסוח קצר של המשימה.
+2. category – אחת בלבד מתוך: משפחה, זוגיות, עבודה, בריאות, חברים, רכב, לימודים, קניות, כללי. אם לא ברור – החזר "כללי".
+3. due_date – תאריך היעד בפורמט YYYY-MM-DD. אם לא ברור – השאר ריק.
+4. frequency – תדירות: יומי / שבועי / חודשי / שנתי / חד פעמי. אם לא ברור – החזר "חד פעמי".
+5. reminder_time – שעת התזכורת בפורמט HH:MM, לפי ההקשר (למשל "בבוקר" = 09:00, "בערב" = 19:00). אם לא ברור – ברירת מחדל 12:00.
 
 📅 היום הנוכחי הוא: ${today}
+
+🔒 החזר אך ורק JSON חוקי – ללא טקסט נוסף, כותרות או הסברים.
+✅ הפלט חייב להיות מוכן ל־JSON.parse.
+
+דוגמה:
+{
+  "task_name": "לקחת את הילד לרופא",
+  "category": "משפחה",
+  "due_date": "2025-05-28",
+  "frequency": "חד פעמי",
+  "reminder_time": "09:00"
+}
 `;
 
   const completion = await openai.chat.completions.create({
@@ -35,6 +47,12 @@ export async function analyzeMessageWithGPT(message) {
     return JSON.parse(responseText);
   } catch (err) {
     console.error("❌ לא הצלחתי לפרש את תגובת GPT:", responseText);
-    return { task_name: '', category: '', due_date: '', frequency: '' };
+    return {
+      task_name: '',
+      category: '',
+      due_date: '',
+      frequency: '',
+      reminder_time: '12:00'
+    };
   }
 }

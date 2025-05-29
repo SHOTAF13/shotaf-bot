@@ -4,6 +4,7 @@ import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { analyzeMessageWithGPT } from './gpt.js';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import axios from 'axios';
 
 dotenv.config();
 
@@ -12,11 +13,24 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
+const GREEN_API_ID = process.env.idInstance;
+const GREEN_API_TOKEN = process.env.apiTokenInstance;
+const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
+
 console.log('🔍 GOOGLE_SHEET_ID:', process.env.GOOGLE_SHEET_ID);
 
-const credentials = JSON.parse(
-  fs.readFileSync('/etc/secrets/credentials.json', 'utf-8')
-);
+// שליחת הודעת וואטסאפ
+async function sendWhatsappMessage(phone, message) {
+  try {
+    await axios.post(`https://api.green-api.com/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`, {
+      chatId: phone + "@c.us",
+      message: message
+    });
+    console.log("📤 נשלחה תגובה למשתמש:", message);
+  } catch (err) {
+    console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
+  }
+}
 
 async function saveToSheet(taskData) {
   console.log('📥 נכנסנו לפונקציה saveToSheet');
@@ -56,8 +70,8 @@ app.post('/webhook', async (req, res) => {
     task_name: '',
     category: '',
     due_date: '',
-    frequency: '',
     reminder_datetime: '',
+    frequency: '',
     was_sent: false,
     created_at: new Date().toISOString(),
   };
@@ -93,9 +107,21 @@ app.post('/webhook', async (req, res) => {
 
   try {
     await saveToSheet(row);
+
+    const reply = `
+💡 קלטתי את המשימה:
+
+📝 משימה: ${row.task_name || 'לא זוהתה'}
+📁 קטגוריה: ${row.category || 'כללי'}
+📅 תאריך יעד: ${row.due_date || 'לא צוין'}
+🔁 תדירות: ${row.frequency || 'חד פעמי'}
+⏰ תזכורת תישלח ב־: ${row.reminder_datetime ? new Date(row.reminder_datetime).toLocaleString("he-IL") : 'לא נקבעה'}
+`.trim();
+
+    await sendWhatsappMessage(phone, reply);
     res.sendStatus(200);
   } catch (err) {
-    console.error('❌ שגיאה בשמירה:', err);
+    console.error('❌ שגיאה בשמירה או בשליחה:', err);
     res.sendStatus(500);
   }
 });
