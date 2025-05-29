@@ -30,8 +30,8 @@ async function checkReminders() {
     const sheet = doc.sheetsByIndex[0];
     const rows = await sheet.getRows();
 
-    const now = new Date();
-    console.log(`🕒 התחלת לולאת בדיקה - זמן נוכחי (UTC): ${now.toISOString()}`);
+    const nowUTC = new Date();
+    const now = new Date(nowUTC.toLocaleString("en-US", { timeZone: "Asia/Jerusalem" }));
 
     for (const row of rows) {
       const reminderTime = new Date(row.reminder_datetime);
