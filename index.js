@@ -19,7 +19,9 @@ const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 
 
 // נרמול מספר טלפון ממך לעצמך
 const rawPhone = process.env.MY_PHONE || '';
-const MY_PHONE_CLEAN = rawPhone.replace(/^0/, '').replace(/^972/, '');
+const MY_PHONE_CLEAN = rawPhone
+  .replace(/^972/, '')
+  .replace(/^0/, '');
 const MY_PHONE_ID = `972${MY_PHONE_CLEAN}@c.us`;
 
 // שליחת הודעת וואטסאפ
@@ -51,7 +53,6 @@ app.post('/webhook', async (req, res) => {
 
   const type = req.body.typeWebhook;
 
-  // סינון ראשוני לפי סוג ההודעה
   if (type !== "outgoingMessageReceived") {
     console.log("⛔️ לא outgoingMessageReceived – מתעלם");
     return res.sendStatus(200);
@@ -109,7 +110,7 @@ app.post('/webhook', async (req, res) => {
   row.due_date = gptData.due_date;
   row.frequency = gptData.frequency;
 
-  if (row.due_date && /^\\d{4}-\\d{2}-\\d{2}$/.test(row.due_date)) {
+  if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
     row.reminder_datetime = new Date(`${row.due_date}T${gptData.reminder_time}:00Z`).toISOString();
   }
 
