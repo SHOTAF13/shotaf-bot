@@ -47,10 +47,10 @@ app.post('/webhook', async (req, res) => {
   const chatId = req.body.senderData?.chatId;
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
-  // ✅ התנאי הקריטי: רק אם אתה שולח לעצמך ולא הודעת סיכום
   const isFromMyself = sender?.includes(process.env.MY_PHONE) && chatId?.includes(process.env.MY_PHONE);
   const isSummaryMessage = message.startsWith("קלטתי את המשימה");
 
+  // סינון הודעות לולאתיות - אם זו הודעת סיכום שהמערכת שלחה
   if (!isFromMyself || isSummaryMessage) {
     console.log('⛔ הודעה לא ממני לעצמי או הודעת סיכום – מדלג');
     return res.sendStatus(200);
@@ -87,7 +87,7 @@ app.post('/webhook', async (req, res) => {
   row.task_name = gptData.task_name || '';
   row.category = gptData.category || '';
   row.due_date = gptData.due_date || '';
-  row.frequency = gptData.frequency || '';
+  row.frequency = gptData.frequency || 'חד פעמי';
 
   let reminderHour = '12:00';
   if (message.includes('בבוקר')) reminderHour = '09:00';
@@ -108,7 +108,7 @@ app.post('/webhook', async (req, res) => {
     await saveToSheet(row);
 
     const reply = `
-קלטתי את המשימה:
+💡 קלטתי את המשימה:
 
 📝 משימה: ${row.task_name || 'לא זוהתה'}
 📁 קטגוריה: ${row.category || 'כללי'}
