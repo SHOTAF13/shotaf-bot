@@ -7,22 +7,25 @@ const openai = new OpenAI({
   apiKey: process.env.KEY_GPT,
 });
 
+const daysMap = {
+  'יום ראשון': 0,
+  'יום שני': 1,
+  'יום שלישי': 2,
+  'יום רביעי': 3,
+  'יום חמישי': 4,
+  'יום שישי': 5,
+  'יום שבת': 6,
+};
+
 function parseHebrewWeekdayToDate(text) {
-  const days = {
-    'יום ראשון': 0,
-    'יום שני': 1,
-    'יום שלישי': 2,
-    'יום רביעי': 3,
-    'יום חמישי': 4,
-    'יום שישי': 5,
-    'יום שבת': 6
-  };
-  for (const [label, dayIndex] of Object.entries(days)) {
+  for (const [label, targetDay] of Object.entries(daysMap)) {
     if (text.includes(label)) {
-      const now = new Date();
-      const result = new Date(now);
-      const diff = (dayIndex + 7 - now.getDay()) % 7 || 7;
-      result.setDate(now.getDate() + diff);
+      const today = new Date();
+      const currentDay = today.getDay();
+      let daysUntil = (targetDay - currentDay + 7) % 7;
+      if (daysUntil === 0) daysUntil = 7; // תמיד לשבוע הבא
+      const result = new Date(today);
+      result.setDate(today.getDate() + daysUntil);
       return result.toISOString().split('T')[0];
     }
   }
@@ -56,8 +59,7 @@ export async function analyzeMessageWithGPT(message) {
   "due_date": "2025-05-28",
   "frequency": "חד פעמי",
   "reminder_time": "09:00"
-}
-`.trim();
+}`.trim();
 
   try {
     const completion = await openai.chat.completions.create({
@@ -70,6 +72,11 @@ export async function analyzeMessageWithGPT(message) {
 
     try {
       const parsed = JSON.parse(responseText);
+
+      // ננסה קודם לזהות יום בשבוע ואז נעדכן את התאריך במידת הצורך
+      const weekdayDate = parseHebrewWeekdayToDate(message);
+      if (weekdayDate) parsed.due_date = weekdayDate;
+
       return parsed;
     } catch (err) {
       console.error("❌ לא הצלחתי לפרש את תגובת GPT כ־JSON:", responseText);
@@ -81,8 +88,8 @@ export async function analyzeMessageWithGPT(message) {
         reminder_time: '12:00'
       };
     }
-  } catch (apiError) {
-    console.error("❌ שגיאה מה־API של GPT:", apiError.message || apiError);
+  } catch (err) {
+    console.error("❌ קרסה הקריאה ל־GPT:", err.message || err);
     return {
       task_name: '',
       category: '',
