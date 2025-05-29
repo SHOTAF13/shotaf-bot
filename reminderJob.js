@@ -5,19 +5,33 @@ import fs from 'fs';
 
 dotenv.config();
 
-const GREEN_API_ID = process.env.idInstance;
-const GREEN_API_TOKEN = process.env.apiTokenInstance;
+// 📌 טען פרטי התחברות ליוזרים שונים
+const USERS = [
+  {
+    id: 'USER1',
+    phoneId: process.env.USER1_PHONE_ID,
+    idInstance: process.env.USER1_ID_INSTANCE,
+    apiToken: process.env.USER1_API_TOKEN
+  },
+  {
+    id: 'USER2',
+    phoneId: process.env.USER2_PHONE_ID,
+    idInstance: process.env.USER2_ID_INSTANCE,
+    apiToken: process.env.USER2_API_TOKEN
+  }
+];
+
 const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
 const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
 
-async function sendWhatsappMessage(phone, message) {
+async function sendWhatsappMessage(user, phone, message) {
   try {
     const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-    await axios.post(`https://api.green-api.com/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`, {
+    await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.apiToken}`, {
       chatId,
       message
     });
-    console.log("📤 הודעה נשלחה ל-", chatId);
+    console.log(`📤 הודעה נשלחה ל-${chatId} ע"י ${user.id}`);
   } catch (err) {
     console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
   }
@@ -30,33 +44,36 @@ async function checkReminders() {
     const sheet = doc.sheetsByIndex[0];
     const rows = await sheet.getRows();
 
-    const nowUTC = new Date();
-    const now = new Date(nowUTC.toLocaleString("en-US", { timeZone: "Asia/Jerusalem" }));
+    const now = new Date();
+    console.log(`🕒 התחלת לולאת בדיקה - זמן נוכחי: ${now.toISOString()}`);
 
     for (const row of rows) {
+      if (!row.reminder_datetime || row.was_sent === 'TRUE') continue;
+
       const reminderTime = new Date(row.reminder_datetime);
-
-      if (!row.reminder_datetime || row.was_sent === 'TRUE') {
-        continue;
-      }
-
       if (reminderTime <= now) {
-        const message = `🔔 תזכורת:
-${row.original_text || 'משימה ללא תוכן'}`;
-        console.log(`📨 שולח תזכורת ל-${row.phone_number} | תוכן: ${message}`);
+        const targetPhone = row.phone_number;
 
-        await sendWhatsappMessage(row.phone_number, message);
+        const user = USERS.find(u => u.phoneId === `${targetPhone}@c.us`);
+        if (!user) {
+          console.log(`⛔️ אין יוזר מתאים ל-${targetPhone}`);
+          continue;
+        }
+
+        const message = `🔔 תזכורת:\n${row.original_text || 'משימה ללא תוכן'}`;
+        await sendWhatsappMessage(user, targetPhone, message);
 
         row.was_sent = true;
         await row.save();
-        console.log(`✅ עודכן שורה - סומן שנשלחה (${row.phone_number})`);
+        console.log(`✅ נשלחה תזכורת ל-${targetPhone} וסומן כנשלח.`);
       } else {
-        console.log(`⏳ עדיין לא הגיע הזמן. תזכורת ב: ${reminderTime.toISOString()} | עכשיו: ${now.toISOString()}`);
+        console.log(`⏳ עדיין לא הגיע הזמן (${row.reminder_datetime})`);
       }
     }
   } catch (err) {
-    console.error("❌ שגיאה כללית בלולאת התזכורות:", err);
+    console.error("❌ שגיאה בלולאת תזכורות:", err);
   }
 }
 
+// 🔁 הפעל כל דקה
 setInterval(checkReminders, 60 * 1000);

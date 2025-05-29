@@ -13,55 +13,103 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
-const GREEN_API_ID = process.env.idInstance;
-const GREEN_API_TOKEN = process.env.apiTokenInstance;
 const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
 
-const rawPhone = process.env.MY_PHONE || '';
-const MY_PHONE_CLEAN = rawPhone
-  .replace(/^972/, '')
-  .replace(/^0/, '');
-const MY_PHONE_ID = `972${MY_PHONE_CLEAN}@c.us`;
+// ✳️ קריאה לכל היוזרים מה־env
+const users = [
+  {
+    phone: process.env.USER1_PHONE,
+    idInstance: process.env.USER1_ID,
+    token: process.env.USER1_TOKEN
+  },
+  {
+    phone: process.env.USER2_PHONE,
+    idInstance: process.env.USER2_ID,
+    token: process.env.USER2_TOKEN
+  }
+];
 
+// ✳️ בניית map של טלפונים → מזהי אינסטנס וטוקן
+const userMap = {};
+for (const u of users) {
+  if (u.phone) {
+    userMap[u.phone] = {
+      idInstance: u.idInstance,
+      token: u.token
+    };
+  }
+}
+
+const formatDueDate = (isoDate) => {
+  if (!isoDate) return 'לא צוין';
+  const date = new Date(isoDate);
+  return date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+};
+
+const formatFriendlyReminder = (isoDate) => {
+  if (!isoDate) return 'לא נקבעה';
+  const now = new Date();
+  const target = new Date(isoDate);
+  const diffInDays = (target - now) / (1000 * 60 * 60 * 24);
+
+  if (diffInDays <= 7) {
+    return target.toLocaleString('he-IL', {
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } else {
+    return target.toLocaleString('he-IL', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+};
+
+// 🟢 שליחת הודעה
 async function sendWhatsappMessage(phone, message) {
+  const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
+  const user = userMap[chatId];
+
+  if (!user) {
+    console.error("❌ מספר לא מזוהה לשליחה:", chatId);
+    return;
+  }
+
   try {
-    const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-    await axios.post(`https://api.green-api.com/waInstance${GREEN_API_ID}/sendMessage/${GREEN_API_TOKEN}`, {
+    await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
       chatId,
       message
     });
-    console.log("📤 נשלחה תגובה למשתמש:", message);
+    console.log("📤 נשלחה תגובה ל־", chatId);
   } catch (err) {
     console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
   }
 }
 
-async function saveToSheet(taskData) {
-  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
-  await doc.useServiceAccountAuth(credentials);
-  await doc.loadInfo();
-  const sheet = doc.sheetsByIndex[0];
-  await sheet.addRow(taskData);
-}
-
+// 📥 קבלת webhook
 app.post('/webhook', async (req, res) => {
   const type = req.body.typeWebhook;
-  if (type !== "outgoingMessageReceived") {
-    return res.sendStatus(200);
-  }
+  if (type !== "outgoingMessageReceived") return res.sendStatus(200);
 
   const sender = req.body.senderData?.sender;
   const chatId = req.body.senderData?.chatId;
   const message = req.body.messageData?.textMessageData?.textMessage || '';
-  const isFromSelfToSelf = sender === MY_PHONE_ID && chatId === MY_PHONE_ID;
 
-  if (!isFromSelfToSelf || !message.trim()) {
+  // אימות: האם השולח מוכר במערכת
+  if (!Object.keys(userMap).includes(sender)) {
+    console.log("⛔️ שולח לא מוכר – מתעלם:", sender);
     return res.sendStatus(200);
   }
 
-  // רק הודעות רלוונטיות יודפסו
-  console.log('📨 קיבלתי הודעה רלוונטית!');
-  console.log(JSON.stringify(req.body, null, 2));
+  // רק אם שלח לעצמו
+  if (sender !== chatId || !message.trim()) {
+    return res.sendStatus(200);
+  }
+
+  console.log("📨 הודעה חדשה מזוהה:", { sender, message });
 
   const phone = chatId.replace('@c.us', '');
   const row = {
@@ -88,7 +136,7 @@ app.post('/webhook', async (req, res) => {
 
   try {
     gptData = await analyzeMessageWithGPT(message);
-  } catch (err) {
+  } catch {
     console.warn("⚠️ GPT נכשל – מחזיר ערכים ריקים");
   }
 
@@ -102,16 +150,20 @@ app.post('/webhook', async (req, res) => {
   }
 
   try {
-    await saveToSheet(row);
+    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
+    await doc.useServiceAccountAuth(credentials);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByIndex[0];
+    await sheet.addRow(row);
 
     const reply = `
-💡 קלטתי את המשימה:
+💡 סגור! הוספתי את זה לרשימה שלך:
 
 📝 משימה: ${row.task_name || 'לא זוהתה'}
 📁 קטגוריה: ${row.category || 'כללי'}
-📅 תאריך יעד: ${row.due_date || 'לא צוין'}
+📅 יעד: ${formatDueDate(row.due_date)}
 🔁 תדירות: ${row.frequency || 'חד פעמי'}
-⏰ תזכורת תישלח ב־: ${row.reminder_datetime ? new Date(row.reminder_datetime).toLocaleString("he-IL") : 'לא נקבעה'}
+⏰ תזכורת: ${formatFriendlyReminder(row.reminder_datetime)}
 `.trim();
 
     await sendWhatsappMessage(phone, reply);
