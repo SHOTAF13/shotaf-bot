@@ -29,16 +29,20 @@ const users = [
   }
 ];
 
-// ✳️ בניית map של טלפונים → מזהי אינסטנס וטוקן
+
+// ✳️ בניית map של chatId → מזהי אינסטנס וטוקן
 const userMap = {};
 for (const u of users) {
   if (u.phone) {
-    userMap[u.phone] = {
+    const cleanPhone = u.phone.replace(/^0/, '972'); // תומך גם במספרים רגילים
+    const chatId = `${cleanPhone}@c.us`;
+    userMap[chatId] = {
       idInstance: u.idInstance,
       token: u.token
     };
   }
 }
+
 
 const formatDueDate = (isoDate) => {
   if (!isoDate) return 'לא צוין';
