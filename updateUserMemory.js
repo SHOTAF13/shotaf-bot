@@ -4,9 +4,8 @@ import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 
 // 🔐 קריאת קובץ מפתחות הסרביס
-const serviceAccount = JSON.parse(
-  fs.readFileSync('./firebase/serviceAccountKey.json', 'utf8')
-);
+const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS_JSON);
+
 
 // 🚀 אתחול Firebase
 initializeApp({

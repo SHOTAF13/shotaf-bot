@@ -3,7 +3,8 @@ import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 
 // אתחול Firebase
-const serviceAccount = JSON.parse(fs.readFileSync('./firebase/serviceAccountKey.json', 'utf8'));
+const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS_JSON);
+
 
 initializeApp({
   credential: cert(serviceAccount)
