@@ -1,6 +1,6 @@
 import { db } from './firebase.js';
 
-export async function updateUserMemory(userId, newInfo = {}) {
+export async function answerUserQuestionWithGPT(userId, newInfo = {}) {
   const userRef = db.collection('user_memory').doc(userId);
   const doc = await userRef.get();
 
