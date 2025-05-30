@@ -1,0 +1,4 @@
+private/
+.env
+firebase.json
+Firebase/serviceAccountKey.json
