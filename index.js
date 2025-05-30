@@ -3,7 +3,7 @@ import bodyParser from 'body-parser';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { analyzeMessageWithGPT } from './gpt.js';
 import { loadUserMemory } from './updateUserMemory.js';
-import { answerUserQuestionWithGPT } from './memory/answerUserQuestion.js';
+import { answerUserQuestionWithGPT } from './answerUserQuestion.js';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import axios from 'axios';
