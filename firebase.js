@@ -1,13 +1,11 @@
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import admin from 'firebase-admin';
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS_JSON);
 
-// אתחול רק אם אין עדיין אפליקציה
-if (!getApps().length) {
-  initializeApp({
-    credential: cert(serviceAccount),
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
-export const db = getFirestore();
+export const db = admin.firestore();
