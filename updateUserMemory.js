@@ -16,11 +16,10 @@ initializeApp({
 // 🔗 חיבור ל-Firestore
 const db = getFirestore();
 
-// 🧠 פונקציה לעדכון זיכרון המשתמש
+// 🧠 עדכון זיכרון משתמש
 export async function updateUserMemory(userId, newInfo = {}) {
   const docRef = db.collection('user_memory').doc(userId.toString());
 
-  // הגדרת מבנה ברירת מחדל אם לא קיים מסמך
   let memoryData = {
     user_id: userId,
     memory: {
@@ -30,13 +29,11 @@ export async function updateUserMemory(userId, newInfo = {}) {
     }
   };
 
-  // טעינת מסמך קיים (אם יש)
   const docSnap = await docRef.get();
   if (docSnap.exists) {
     memoryData = docSnap.data();
   }
 
-  // עדכון שם
   if (newInfo.name) {
     const existing = memoryData.memory.names[newInfo.name] || {
       mentions: 0,
@@ -53,21 +50,26 @@ export async function updateUserMemory(userId, newInfo = {}) {
     };
   }
 
-  // עדכון מילות מפתח
   if (newInfo.keywords) {
     for (const [k, v] of Object.entries(newInfo.keywords)) {
       memoryData.memory.keywords[k] = v;
     }
   }
 
-  // עדכון נושאים
   if (newInfo.topics) {
     memoryData.memory.topics = Array.from(
       new Set([...(memoryData.memory.topics || []), ...newInfo.topics])
     );
   }
 
-  // שמירת העדכון ב-DB
   await docRef.set(memoryData);
   console.log(`✅ זיכרון עודכן עבור ${userId}`);
+}
+
+// 📤 טעינת זיכרון משתמש קיים
+export async function loadUserMemory(userId) {
+  const docRef = db.collection('user_memory').doc(userId.toString());
+  const docSnap = await docRef.get();
+  if (!docSnap.exists) return null;
+  return docSnap.data();
 }
