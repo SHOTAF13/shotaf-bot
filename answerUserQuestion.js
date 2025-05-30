@@ -1,4 +1,4 @@
-import { db } from '../firebase.js';
+import { db } from './firebase.js';
 
 export async function updateUserMemory(userId, newInfo = {}) {
   const userRef = db.collection('user_memory').doc(userId);
