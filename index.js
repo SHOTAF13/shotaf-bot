@@ -2,6 +2,8 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { analyzeMessageWithGPT } from './gpt.js';
+import { loadUserMemory } from './memory/updateUserMemory.js';
+import { answerUserQuestionWithGPT } from './memory/answerUserQuestion.js';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import axios from 'axios';
@@ -29,7 +31,6 @@ const users = [
   }
 ];
 
-
 // ✳️ בניית map של chatId → מזהי אינסטנס וטוקן
 const userMap = {};
 for (const u of users) {
@@ -42,7 +43,6 @@ for (const u of users) {
     };
   }
 }
-
 
 const formatDueDate = (isoDate) => {
   if (!isoDate) return 'לא צוין';
@@ -116,6 +116,16 @@ app.post('/webhook', async (req, res) => {
   console.log("📨 הודעה חדשה מזוהה:", { sender, message });
 
   const phone = chatId.replace('@c.us', '');
+  const isQuestion = message.trim().endsWith('?');
+
+  if (isQuestion) {
+    const userId = 'usr_' + phone.slice(-6);
+    const userMemory = loadUserMemory(userId);
+    const answer = await answerUserQuestionWithGPT(message, userMemory);
+    await sendWhatsappMessage(phone, answer);
+    return res.sendStatus(200);
+  }
+
   const row = {
     task_id: 'tsk_' + Date.now(),
     user_id: 'usr_' + phone.slice(-6),
