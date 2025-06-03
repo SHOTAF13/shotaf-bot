@@ -1,26 +1,25 @@
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import fs from 'fs';
+import { db } from './firebase.js';
 
-// אתחול Firebase
-const serviceAccount = JSON.parse(fs.readFileSync('./firebase/serviceAccountKey.json', 'utf8'));
-
-initializeApp({
-  credential: cert(serviceAccount)
-});
-
-const db = getFirestore();
-
+// טעינת זיכרון משתמש
 export async function loadUserMemory(userId) {
-  const docRef = db.collection('user_memory').doc(userId.toString());
-  const docSnap = await docRef.get();
+  try {
+    const docRef = db.collection('user_memory').doc(userId.toString());
+    const docSnap = await docRef.get();
 
-  if (!docSnap.exists) {
+    if (!docSnap.exists) {
+      console.log(`📭 אין עדיין זיכרון ל־${userId} – מחזיר ברירת מחדל`);
+      return {
+        user_id: userId,
+        memory: { names: {}, keywords: {}, topics: [] }
+      };
+    }
+
+    return docSnap.data();
+  } catch (err) {
+    console.error("❌ שגיאה בקריאת זיכרון מ־Firestore:", err);
     return {
       user_id: userId,
       memory: { names: {}, keywords: {}, topics: [] }
     };
   }
-
-  return docSnap.data();
 }

@@ -1,12 +1,11 @@
+// 📄 index.js – קובץ שמאזין לווטסאפ ומוסיף תזכורות ל־Firestore
+
 import express from 'express';
 import bodyParser from 'body-parser';
-import { GoogleSpreadsheet } from 'google-spreadsheet';
-import { analyzeMessageWithGPT } from './gpt.js';
-import { loadUserMemory } from './memory/updateUserMemory.js';
-import { answerUserQuestionWithGPT } from './memory/answerUserQuestion.js';
+import { db } from './firebase.js';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import axios from 'axios';
+import { analyzeMessageWithGPT, answerUserQuestionWithGPT, loadUserMemory } from './gpt.js';
 
 dotenv.config();
 
@@ -15,9 +14,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
-const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
 
-// ✳️ קריאה לכל היוזרים מה־env
 const users = [
   {
     phone: process.env.USER1_PHONE,
@@ -31,11 +28,10 @@ const users = [
   }
 ];
 
-// ✳️ בניית map של chatId → מזהי אינסטנס וטוקן
 const userMap = {};
 for (const u of users) {
   if (u.phone) {
-    const cleanPhone = u.phone.replace(/^0/, '972'); // תומך גם במספרים רגילים
+    const cleanPhone = u.phone.replace(/^0/, '972');
     const chatId = `${cleanPhone}@c.us`;
     userMap[chatId] = {
       idInstance: u.idInstance,
@@ -72,15 +68,10 @@ const formatFriendlyReminder = (isoDate) => {
   }
 };
 
-// 🟢 שליחת הודעה
 async function sendWhatsappMessage(phone, message) {
   const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
   const user = userMap[chatId];
-
-  if (!user) {
-    console.error("❌ מספר לא מזוהה לשליחה:", chatId);
-    return;
-  }
+  if (!user) return;
 
   try {
     await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
@@ -93,7 +84,6 @@ async function sendWhatsappMessage(phone, message) {
   }
 }
 
-// 📥 קבלת webhook
 app.post('/webhook', async (req, res) => {
   const type = req.body.typeWebhook;
   if (type !== "outgoingMessageReceived") return res.sendStatus(200);
@@ -102,33 +92,25 @@ app.post('/webhook', async (req, res) => {
   const chatId = req.body.senderData?.chatId;
   const message = req.body.messageData?.textMessageData?.textMessage || '';
 
-  // אימות: האם השולח מוכר במערכת
-  if (!Object.keys(userMap).includes(sender)) {
-    console.log("⛔️ שולח לא מוכר – מתעלם:", sender);
-    return res.sendStatus(200);
-  }
-
-  // רק אם שלח לעצמו
-  if (sender !== chatId || !message.trim()) {
-    return res.sendStatus(200);
-  }
+  if (!Object.keys(userMap).includes(sender)) return res.sendStatus(200);
+  if (sender !== chatId || !message.trim()) return res.sendStatus(200);
 
   console.log("📨 הודעה חדשה מזוהה:", { sender, message });
 
   const phone = chatId.replace('@c.us', '');
   const isQuestion = message.trim().endsWith('?');
+  const userId = 'usr_' + phone.slice(-6);
 
   if (isQuestion) {
-    const userId = 'usr_' + phone.slice(-6);
-    const userMemory = loadUserMemory(userId);
-    const answer = await answerUserQuestionWithGPT(message, userMemory);
+    const userMemory = await loadUserMemory(userId);
+    const answer = await answerUserQuestionWithGPT(message, userMemory, userId);
     await sendWhatsappMessage(phone, answer);
     return res.sendStatus(200);
   }
 
   const row = {
     task_id: 'tsk_' + Date.now(),
-    user_id: 'usr_' + phone.slice(-6),
+    user_id: userId,
     phone_number: phone,
     original_text: message,
     task_name: '',
@@ -164,11 +146,8 @@ app.post('/webhook', async (req, res) => {
   }
 
   try {
-    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
-    await doc.useServiceAccountAuth(credentials);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByIndex[0];
-    await sheet.addRow(row);
+    await db.collection('tasks').doc(row.task_id).set(row);
+    console.log(`✅ נשמרה משימה חדשה ב־Firestore עבור ${row.phone_number}`);
 
     const reply = `
 💡 סגור! הוספתי את זה לרשימה שלך:
@@ -191,4 +170,3 @@ app.post('/webhook', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 שרת פעיל על פורט ${PORT}`);
 });
-

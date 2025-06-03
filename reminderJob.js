@@ -1,79 +1,76 @@
-import dotenv from 'dotenv';
-import { GoogleSpreadsheet } from 'google-spreadsheet';
+// 📄 reminderJob.js – קובץ שמריץ תזכורות בזמן ומודיע בוואטסאפ
+
+import { db } from './firebase.js';
 import axios from 'axios';
-import fs from 'fs';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
-// 📌 טען פרטי התחברות ליוזרים שונים
-const USERS = [
+const users = [
   {
-    id: 'USER1',
-    phoneId: process.env.USER1_PHONE_ID,
-    idInstance: process.env.USER1_ID_INSTANCE,
-    apiToken: process.env.USER1_API_TOKEN
+    phone: process.env.USER1_PHONE,
+    idInstance: process.env.USER1_ID,
+    token: process.env.USER1_TOKEN
   },
   {
-    id: 'USER2',
-    phoneId: process.env.USER2_PHONE_ID,
-    idInstance: process.env.USER2_ID_INSTANCE,
-    apiToken: process.env.USER2_API_TOKEN
+    phone: process.env.USER2_PHONE,
+    idInstance: process.env.USER2_ID,
+    token: process.env.USER2_TOKEN
   }
 ];
 
-const credentials = JSON.parse(fs.readFileSync('/etc/secrets/credentials.json', 'utf-8'));
-const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID);
+const userMap = {};
+for (const u of users) {
+  if (u.phone) {
+    const cleanPhone = u.phone.replace(/^0/, '972');
+    const chatId = `${cleanPhone}@c.us`;
+    userMap[chatId] = {
+      idInstance: u.idInstance,
+      token: u.token
+    };
+  }
+}
 
-async function sendWhatsappMessage(user, phone, message) {
+async function sendWhatsappMessage(chatId, message) {
+  const user = userMap[chatId];
+  if (!user) return;
+
   try {
-    const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-    await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.apiToken}`, {
+    await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
       chatId,
       message
     });
-    console.log(`📤 הודעה נשלחה ל-${chatId} ע"י ${user.id}`);
+    console.log('📤 הודעה נשלחה ל:', chatId);
   } catch (err) {
-    console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
+    console.error('❌ שגיאה בשליחת הודעה:', err.response?.data || err.message);
   }
+}
+
+function isTimeToSend(reminderDateTime) {
+  const now = new Date();
+  const target = new Date(reminderDateTime);
+  const diff = Math.abs(now.getTime() - target.getTime());
+  return diff <= 1000 * 60; // בטווח של דקה
 }
 
 async function checkReminders() {
-  try {
-    await doc.useServiceAccountAuth(credentials);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByIndex[0];
-    const rows = await sheet.getRows();
+  const snapshot = await db.collection('tasks')
+    .where('was_sent', '==', false)
+    .get();
 
-    const now = new Date();
-    console.log(`🕒 התחלת לולאת בדיקה - זמן נוכחי: ${now.toISOString()}`);
+  for (const doc of snapshot.docs) {
+    const task = doc.data();
+    const chatId = `${task.phone_number}@c.us`;
 
-    for (const row of rows) {
-      if (!row.reminder_datetime || row.was_sent === 'TRUE') continue;
+    if (!task.reminder_datetime) continue;
+    if (!isTimeToSend(task.reminder_datetime)) continue;
 
-      const reminderTime = new Date(row.reminder_datetime);
-      if (reminderTime <= now) {
-        const targetPhone = row.phone_number;
+    const message = `⏰ תזכורת: ${task.task_name || 'משימה'} בקטגוריית ${task.category || 'כללי'} ליום ${task.due_date}`;
+    await sendWhatsappMessage(chatId, message);
 
-        const user = USERS.find(u => u.phoneId === `${targetPhone}@c.us`);
-        if (!user) {
-          console.log(`⛔️ אין יוזר מתאים ל-${targetPhone}`);
-          continue;
-        }
-
-        const message = `🔔 תזכורת:\n${row.original_text || 'משימה ללא תוכן'}`;
-        await sendWhatsappMessage(user, targetPhone, message);
-
-        row.was_sent = true;
-        await row.save();
-        console.log(`✅ נשלחה תזכורת ל-${targetPhone} וסומן כנשלח.`);
-      } else {
-        console.log(`⏳ עדיין לא הגיע הזמן (${row.reminder_datetime})`);
-      }
-    }
-  } catch (err) {
-    console.error("❌ שגיאה בלולאת תזכורות:", err);
+    await db.collection('tasks').doc(task.task_id).update({ was_sent: true });
+    console.log('✅ נשלחה תזכורת ונעודכן was_sent');
   }
 }
 
-// 🔁 הפעל כל דקה
-setInterval(checkReminders, 60 * 1000);
+setInterval(checkReminders, 60 * 1000); // כל דקה
