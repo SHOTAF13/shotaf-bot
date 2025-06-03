@@ -1,5 +1,3 @@
-// 📄 index.js – קובץ שמאזין לווטסאפ ומוסיף תזכורות ל־Firestore
-
 import express from 'express';
 import bodyParser from 'body-parser';
 import { db } from './firebase.js';
@@ -40,18 +38,17 @@ for (const u of users) {
   }
 }
 
-const formatDueDate = (isoDate) => {
+function formatDueDate(isoDate) {
   if (!isoDate) return 'לא צוין';
   const date = new Date(isoDate);
   return date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
-};
+}
 
-const formatFriendlyReminder = (isoDate) => {
+function formatFriendlyReminder(isoDate) {
   if (!isoDate) return 'לא נקבעה';
   const now = new Date();
   const target = new Date(isoDate);
   const diffInDays = (target - now) / (1000 * 60 * 60 * 24);
-
   if (diffInDays <= 7) {
     return target.toLocaleString('he-IL', {
       weekday: 'long',
@@ -66,7 +63,7 @@ const formatFriendlyReminder = (isoDate) => {
       minute: '2-digit'
     });
   }
-};
+}
 
 async function sendWhatsappMessage(phone, message) {
   const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
@@ -78,76 +75,101 @@ async function sendWhatsappMessage(phone, message) {
       chatId,
       message
     });
-    console.log("📤 נשלחה תגובה ל־", chatId);
+    console.log("📤 נשלחה הודעה ל־", chatId);
   } catch (err) {
     console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
   }
 }
 
+// נקודת כניסה של ה־Webhook
 app.post('/webhook', async (req, res) => {
-  const type = req.body.typeWebhook;
-  if (type !== "outgoingMessageReceived") return res.sendStatus(200);
-
-  const sender = req.body.senderData?.sender;
-  const chatId = req.body.senderData?.chatId;
-  const message = req.body.messageData?.textMessageData?.textMessage || '';
-
-  if (!Object.keys(userMap).includes(sender)) return res.sendStatus(200);
-  if (sender !== chatId || !message.trim()) return res.sendStatus(200);
-
-  console.log("📨 הודעה חדשה מזוהה:", { sender, message });
-
-  const phone = chatId.replace('@c.us', '');
-  const isQuestion = message.trim().endsWith('?');
-  const userId = 'usr_' + phone.slice(-6);
-
-  if (isQuestion) {
-    const userMemory = await loadUserMemory(userId);
-    const answer = await answerUserQuestionWithGPT(message, userMemory, userId);
-    await sendWhatsappMessage(phone, answer);
-    return res.sendStatus(200);
-  }
-
-  const row = {
-    task_id: 'tsk_' + Date.now(),
-    user_id: userId,
-    phone_number: phone,
-    original_text: message,
-    task_name: '',
-    category: '',
-    due_date: '',
-    reminder_datetime: '',
-    frequency: '',
-    was_sent: false,
-    created_at: new Date().toISOString(),
-  };
-
-  let gptData = {
-    task_name: '',
-    category: '',
-    due_date: '',
-    frequency: '',
-    reminder_time: '12:00'
-  };
-
   try {
-    gptData = await analyzeMessageWithGPT(message);
-  } catch {
-    console.warn("⚠️ GPT נכשל – מחזיר ערכים ריקים");
-  }
+    console.log("📥 התקבלה בקשת Webhook:");
+    console.log(JSON.stringify(req.body, null, 2));  // לוג מלא של הבקשה
 
-  row.task_name = gptData.task_name;
-  row.category = gptData.category;
-  row.due_date = gptData.due_date;
-  row.frequency = gptData.frequency;
+    const type = req.body.typeWebhook;
+    const sender = req.body.senderData?.sender;
+    const chatId = req.body.senderData?.chatId;
+    const message = req.body.messageData?.textMessageData?.textMessage || '';
 
-  if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-    row.reminder_datetime = new Date(`${row.due_date}T${gptData.reminder_time}:00Z`).toISOString();
-  }
+    if (!type || !sender || !chatId) {
+      console.log("⚠️ שדות חסרים ב־Webhook. סוג:", type, "שולח:", sender, "צ׳אט:", chatId);
+      return res.sendStatus(200);
+    }
 
-  try {
+    // הצג את כל המשתמשים שזיהית
+    console.log("📦 userMap keys:", Object.keys(userMap));
+
+    // בדיקה אם בכלל המשתמש מורשה
+    if (!Object.keys(userMap).includes(sender)) {
+      console.log("❌ השולח לא מזוהה ברשימת userMap:", sender);
+      return res.sendStatus(200);
+    }
+
+    if (sender !== chatId) {
+      console.log("🚫 הודעה ממספר לא תואם לשולח עצמו:", sender, chatId);
+      return res.sendStatus(200);
+    }
+
+    if (!message.trim()) {
+      console.log("📭 התקבלה הודעה ריקה או לא מזוהה");
+      return res.sendStatus(200);
+    }
+
+    console.log("📨 הודעה מזוהה מ־", sender, ":", message);
+
+    const phone = chatId.replace('@c.us', '');
+    const isQuestion = message.trim().endsWith('?');
+    const userId = 'usr_' + phone.slice(-6);
+
+    if (isQuestion) {
+      console.log("❓ מזוהה כשאלה – נשלח ל־GPT...");
+      const userMemory = await loadUserMemory(userId);
+      const answer = await answerUserQuestionWithGPT(message, userMemory, userId);
+      await sendWhatsappMessage(phone, answer);
+      return res.sendStatus(200);
+    }
+
+    let row = {
+      task_id: 'tsk_' + Date.now(),
+      user_id: userId,
+      phone_number: phone,
+      original_text: message,
+      task_name: '',
+      category: '',
+      due_date: '',
+      reminder_datetime: '',
+      frequency: '',
+      was_sent: false,
+      created_at: new Date().toISOString(),
+    };
+
+    let gptData = {
+      task_name: '',
+      category: '',
+      due_date: '',
+      frequency: '',
+      reminder_time: '12:00'
+    };
+
+    try {
+      gptData = await analyzeMessageWithGPT(message);
+      console.log("🤖 פלט GPT:", gptData);
+    } catch {
+      console.warn("⚠️ GPT נכשל – מחזיר ערכים ריקים");
+    }
+
+    row.task_name = gptData.task_name;
+    row.category = gptData.category;
+    row.due_date = gptData.due_date;
+    row.frequency = gptData.frequency;
+
+    if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
+      row.reminder_datetime = new Date(`${row.due_date}T${gptData.reminder_time}:00Z`).toISOString();
+    }
+
     await db.collection('tasks').doc(row.task_id).set(row);
-    console.log(`✅ נשמרה משימה חדשה ב־Firestore עבור ${row.phone_number}`);
+    console.log(`✅ משימה נשמרה ב־Firestore עבור ${row.phone_number}`);
 
     const reply = `
 💡 סגור! הוספתי את זה לרשימה שלך:
@@ -162,7 +184,7 @@ app.post('/webhook', async (req, res) => {
     await sendWhatsappMessage(phone, reply);
     res.sendStatus(200);
   } catch (err) {
-    console.error('❌ שגיאה בשמירה או בשליחה:', err);
+    console.error('🔥 שגיאה כללית ב־/webhook:', err);
     res.sendStatus(500);
   }
 });
