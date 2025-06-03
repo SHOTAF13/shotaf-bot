@@ -13,29 +13,24 @@ app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
 
-const users = [
-  {
-    phone: process.env.USER1_PHONE,
-    idInstance: process.env.USER1_ID,
-    token: process.env.USER1_TOKEN
-  },
-  {
-    phone: process.env.USER2_PHONE,
-    idInstance: process.env.USER2_ID,
-    token: process.env.USER2_TOKEN
-  }
-];
+async function loadUsersFromFirestore() {
+  const snapshot = await db.collection('users').get();
+  const userMap = {};
 
-const userMap = {};
-for (const u of users) {
-  if (u.phone) {
-    const cleanPhone = u.phone.replace(/^0/, '972');
-    const chatId = `${cleanPhone}@c.us`;
-    userMap[chatId] = {
-      idInstance: u.idInstance,
-      token: u.token
-    };
-  }
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    if (data.phone && data.idInstance && data.token) {
+      const cleanPhone = data.phone.replace(/^0/, '972');
+      const chatId = `${cleanPhone}@c.us`;
+      userMap[chatId] = {
+        idInstance: data.idInstance,
+        token: data.token
+      };
+    }
+  });
+
+  console.log("📦 נטענו משתמשים מ־Firestore:", Object.keys(userMap));
+  return userMap;
 }
 
 function formatDueDate(isoDate) {
@@ -65,7 +60,7 @@ function formatFriendlyReminder(isoDate) {
   }
 }
 
-async function sendWhatsappMessage(phone, message) {
+async function sendWhatsappMessage(phone, message, userMap) {
   const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
   const user = userMap[chatId];
   if (!user) return;
@@ -81,11 +76,10 @@ async function sendWhatsappMessage(phone, message) {
   }
 }
 
-// נקודת כניסה של ה־Webhook
 app.post('/webhook', async (req, res) => {
   try {
     console.log("📥 התקבלה בקשת Webhook:");
-    console.log(JSON.stringify(req.body, null, 2));  // לוג מלא של הבקשה
+    console.log(JSON.stringify(req.body, null, 2));
 
     const type = req.body.typeWebhook;
     const sender = req.body.senderData?.sender;
@@ -97,10 +91,9 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // הצג את כל המשתמשים שזיהית
+    const userMap = await loadUsersFromFirestore();
     console.log("📦 userMap keys:", Object.keys(userMap));
 
-    // בדיקה אם בכלל המשתמש מורשה
     if (!Object.keys(userMap).includes(sender)) {
       console.log("❌ השולח לא מזוהה ברשימת userMap:", sender);
       return res.sendStatus(200);
@@ -126,7 +119,7 @@ app.post('/webhook', async (req, res) => {
       console.log("❓ מזוהה כשאלה – נשלח ל־GPT...");
       const userMemory = await loadUserMemory(userId);
       const answer = await answerUserQuestionWithGPT(message, userMemory, userId);
-      await sendWhatsappMessage(phone, answer);
+      await sendWhatsappMessage(phone, answer, userMap);
       return res.sendStatus(200);
     }
 
@@ -181,7 +174,7 @@ app.post('/webhook', async (req, res) => {
 ⏰ תזכורת: ${formatFriendlyReminder(row.reminder_datetime)}
 `.trim();
 
-    await sendWhatsappMessage(phone, reply);
+    await sendWhatsappMessage(phone, reply, userMap);
     res.sendStatus(200);
   } catch (err) {
     console.error('🔥 שגיאה כללית ב־/webhook:', err);
