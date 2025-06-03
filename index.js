@@ -158,7 +158,7 @@ app.post('/webhook', async (req, res) => {
     row.frequency = gptData.frequency;
 
     if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-      row.reminder_datetime = new Date(`${row.due_date}T${gptData.reminder_time}:00Z`).toISOString();
+      row.reminder_datetime = new Date(`${row.due_date}T${gptData.reminder_time}:00`).toISOString();
     }
 
     await db.collection('tasks').doc(row.task_id).set(row);
