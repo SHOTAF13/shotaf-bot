@@ -89,6 +89,10 @@ app.post('/webhook', async (req, res) => {
     if (!type || !sender || !chatId) return res.sendStatus(200);
     if (!Object.keys(userMap).includes(sender)) return res.sendStatus(200);
     if (sender !== chatId || !message.trim()) return res.sendStatus(200);
+    console.log("🔍 sender:", sender);
+    console.log("🔍 chatId:", chatId);
+    console.log("🔍 userMap keys:", Object.keys(userMap));
+
 
     console.log("📨 הודעה מזוהה מ־", sender, ":", message);
 
