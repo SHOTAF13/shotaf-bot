@@ -134,12 +134,20 @@ app.post('/webhook', async (req, res) => {
     row.due_date = gptData.due_date;
     row.frequency = gptData.frequency;
 
-    if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-      const [hour, minute] = gptData.reminder_time.split(':');
-      const localDate = new Date(`${row.due_date}T${hour}:${minute}:00`);
-      const utcDate = new Date(localDate.getTime() - (3 * 60 * 60 * 1000)); // להפוך ל־UTC לפי זמן ישראל
-      row.reminder_datetime = utcDate.toISOString();
-    }
+   if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
+  const [hour, minute] = gptData.reminder_time.split(':');
+  const localDate = new Date(`${row.due_date}T${hour}:${minute}:00`);
+  const nowIsrael = new Date(Date.now() + 3 * 60 * 60 * 1000);
+
+  // אם השעה המבוקשת כבר עברה – דוחים ליום המחרת
+  if (localDate.getTime() < nowIsrael.getTime()) {
+    localDate.setDate(localDate.getDate() + 1);
+  }
+
+  const utcDate = new Date(localDate.getTime() - (3 * 60 * 60 * 1000));
+  row.reminder_datetime = utcDate.toISOString();
+}
+
 
     await db.collection('tasks').doc(row.task_id).set(row);
     console.log(`✅ משימה נשמרה ב־Firestore עבור ${row.phone_number}`);
