@@ -39,14 +39,19 @@ async function sendWhatsappMessage(chatId, message, userMap) {
   }
 }
 
-function isTimeToSend(reminderDateTime) {
-  const now = new Date();
-  const nowStr = now.toISOString().slice(0, 16).replace('T', ' '); // YYYY-MM-DD HH:mm
-  const reminderStr = reminderDateTime.slice(0, 16).replace('T', ' '); // התאמה גם אם יש T
+import { DateTime } from 'luxon';
 
-  console.log(`🕒 השוואת זמן: עכשיו ${nowStr} מול יעד ${reminderStr}`);
+function isTimeToSend(reminderDateTime) {
+  const now = DateTime.now().setZone('Asia/Jerusalem');
+  const nowStr = now.toFormat('yyyy-MM-dd HH:mm');
+
+  const reminder = DateTime.fromFormat(reminderDateTime.slice(0, 16).replace('T', ' '), 'yyyy-MM-dd HH:mm');
+  const reminderStr = reminder.toFormat('yyyy-MM-dd HH:mm');
+
+  console.log(`🕒 השוואת זמן (שעון ישראל): עכשיו ${nowStr} מול יעד ${reminderStr}`);
   return nowStr === reminderStr;
 }
+
 
 async function checkReminders() {
   const userMap = await loadUsersFromFirestore();
