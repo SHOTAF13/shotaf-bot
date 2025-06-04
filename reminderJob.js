@@ -40,10 +40,17 @@ async function sendWhatsappMessage(chatId, message, userMap) {
 }
 
 function isTimeToSend(reminderDateTime) {
+  function isTimeToSend(reminderDateTime) {
   const now = new Date();
   const target = new Date(reminderDateTime);
-  const diff = Math.abs(now.getTime() - target.getTime());
-  return diff <= 1000 * 60; // עד דקה הפרש
+
+  return now.getFullYear() === target.getFullYear() &&
+         now.getMonth() === target.getMonth() &&
+         now.getDate() === target.getDate() &&
+         now.getHours() === target.getHours() &&
+         now.getMinutes() === target.getMinutes();
+}
+
 }
 
 async function checkReminders() {
