@@ -143,9 +143,8 @@ app.post('/webhook', async (req, res) => {
   if (localDate.getTime() < nowIsrael.getTime()) {
     localDate.setDate(localDate.getDate() + 1);
   }
+  row.reminder_datetime = localDate.toISOString();
 
-  const utcDate = new Date(localDate.getTime() - (3 * 60 * 60 * 1000));
-  row.reminder_datetime = utcDate.toISOString();
 }
 
 
