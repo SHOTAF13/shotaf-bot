@@ -59,9 +59,9 @@ async function sendWhatsappMessage(phone, message) {
 const userMap = {};
 
 // טעינת משתמשים מתוך Firestore
-import { db } from './firebase.js'; // זה הקובץ שבו אתה מייצא את admin.firestore()
+
 (async () => {
-  const snapshot = await getDocs(collection(firestore, 'reminder'));
+  const snapshot = await db.collection('reminder').get();
   snapshot.forEach(doc => {
     const data = doc.data();
     if (data.phone && data.idInstance && data.token) {
