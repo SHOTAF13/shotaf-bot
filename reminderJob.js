@@ -1,3 +1,4 @@
+
 import { db } from './firebase.js';
 import axios from 'axios';
 import dotenv from 'dotenv';
@@ -46,10 +47,7 @@ function isTimeToSend(reminderDateTime) {
   const nowUTC = new Date();
   const nowIsrael = new Date(nowUTC.getTime() + (3 * 60 * 60 * 1000)); // הוספת 3 שעות
   const target = new Date(reminderDateTime);
-
-  const diff = nowIsrael.getTime() - target.getTime();
-  return diff >= 0 && diff <= 60 * 1000;
-
+  return nowIsrael.getTime() >= target.getTime(); // שולח אם עבר הזמן
 }
 
 async function checkReminders() {
@@ -72,9 +70,9 @@ async function checkReminders() {
     console.log("📅 reminder_datetime:", task.reminder_datetime);
 
     if (!task.reminder_datetime) {
-  console.log("❌ reminder_datetime חסר במשימה:", task.task_id);
-  continue;
-  } 
+      console.log("❌ reminder_datetime חסר במשימה:", task.task_id);
+      continue;
+    } 
 
     const shouldSend = isTimeToSend(task.reminder_datetime);
 
