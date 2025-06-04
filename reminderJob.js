@@ -43,13 +43,9 @@ function isTimeToSend(reminderDateTime) {
   const now = new Date();
   const nowStr = now.toLocaleString('sv-SE').slice(0, 16); // yyyy-MM-dd HH:mm
   const reminderStr = reminderDateTime.slice(0, 16);
-
   console.log(`🕒 השוואת זמן: עכשיו ${nowStr} מול יעד ${reminderStr}`);
   return nowStr === reminderStr;
 }
-
-
-
 
 async function checkReminders() {
   const userMap = await loadUsersFromFirestore();
@@ -57,14 +53,23 @@ async function checkReminders() {
     .where('was_sent', '==', false)
     .get();
 
+  console.log(`🔍 נמצאו ${snapshot.size} משימות ממתינות`);
+
   for (const doc of snapshot.docs) {
     const task = doc.data();
     const chatId = `${task.phone_number}@c.us`;
 
+    console.log('📋 בודק משימה:', doc.id);
+    console.log('📅 reminder_datetime:', task.reminder_datetime);
+
     if (!task.reminder_datetime) continue;
-    if (!isTimeToSend(task.reminder_datetime)) continue;
+    if (!isTimeToSend(task.reminder_datetime)) {
+      console.log('⏱ עדיין לא הזמן לשלוח את התזכורת הזו');
+      continue;
+    }
 
     const message = `⏰ תזכורת: ${task.task_name || 'משימה'} בקטגוריית ${task.category || 'כללי'} ליום ${task.due_date}`;
+    console.log(`📨 שולח תזכורת ל־${chatId}: ${message}`);
     await sendWhatsappMessage(chatId, message, userMap);
 
     await db.collection('tasks').doc(task.task_id).update({ was_sent: true });
