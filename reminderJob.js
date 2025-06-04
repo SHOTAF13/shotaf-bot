@@ -40,18 +40,16 @@ async function sendWhatsappMessage(chatId, message, userMap) {
 }
 
 function isTimeToSend(reminderDateTime) {
-  function isTimeToSend(reminderDateTime) {
   const now = new Date();
-  const target = new Date(reminderDateTime);
+  const nowStr = now.toLocaleString('sv-SE').slice(0, 16); // yyyy-MM-dd HH:mm
+  const reminderStr = reminderDateTime.slice(0, 16);
 
-  return now.getFullYear() === target.getFullYear() &&
-         now.getMonth() === target.getMonth() &&
-         now.getDate() === target.getDate() &&
-         now.getHours() === target.getHours() &&
-         now.getMinutes() === target.getMinutes();
+  console.log(`🕒 השוואת זמן: עכשיו ${nowStr} מול יעד ${reminderStr}`);
+  return nowStr === reminderStr;
 }
 
-}
+
+
 
 async function checkReminders() {
   const userMap = await loadUsersFromFirestore();
