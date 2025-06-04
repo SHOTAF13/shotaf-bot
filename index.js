@@ -136,26 +136,26 @@ app.post('/webhook', async (req, res) => {
 
 if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
   const [hourRaw, minuteRaw] = (gptData.reminder_time || '12:00').split(':');
-
   const pad = (n) => n.toString().padStart(2, '0');
 
   const hour = pad(Number(hourRaw));
   const minute = pad(Number(minuteRaw));
 
-  // ליצור תאריך **בזמן ישראל**, לפי אזור זמן Asia/Jerusalem
-  const localDate = new Date(`${row.due_date}T${hour}:${minute}:00+03:00`);
+  // יוצרים תאריך עם איזור זמן של ישראל
+  const localDateInIsrael = new Date(`${row.due_date}T${hour}:${minute}:00+03:00`);
 
-  // לבדוק אם הזמן כבר עבר לפי שעון ישראל
-  const now = new Date();
-  const nowIsrael = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  // שעת עכשיו לפי שעון ישראל
+  const nowIsrael = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
 
-  if (localDate.getTime() < nowIsrael.getTime()) {
-    localDate.setDate(localDate.getDate() + 1);
+  // אם התזכורת מהעבר – דוחים ליום הבא
+  if (localDateInIsrael.getTime() < nowIsrael.getTime()) {
+    localDateInIsrael.setDate(localDateInIsrael.getDate() + 1);
   }
 
-  // שמירה בפורמט UTC
-  row.reminder_datetime = new Date(localDate).toISOString();
+  // שומרים בפורמט UTC
+  row.reminder_datetime = new Date(localDateInIsrael).toISOString();
 }
+
 
 
 
