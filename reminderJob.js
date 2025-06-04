@@ -3,11 +3,10 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
-console.log("📦 userMap keys:", Object.keys(userMap));
 
-async function loadUsersFromFirestore() {
-  const snapshot = await db.collection('users').get();
+async function loadUserMap() {
   const userMap = {};
+  const snapshot = await db.collection('users').get();
 
   snapshot.forEach(doc => {
     const data = doc.data();
@@ -21,69 +20,67 @@ async function loadUsersFromFirestore() {
     }
   });
 
-  console.log("📦 נטענו משתמשים מ־Firestore (reminder):", Object.keys(userMap));
+  console.log("✅ userMap loaded:", Object.keys(userMap));
   return userMap;
 }
 
 async function sendWhatsappMessage(chatId, message, userMap) {
   const user = userMap[chatId];
-  if (!user) return;
+  if (!user) {
+    console.warn("⚠️ אין מידע על המשתמש:", chatId);
+    return;
+  }
 
   try {
     await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
       chatId,
       message
     });
-    console.log('📤 הודעה נשלחה ל:', chatId);
+    console.log("📤 הודעה נשלחה ל:", chatId);
   } catch (err) {
-    console.error('❌ שגיאה בשליחת הודעה:', err.response?.data || err.message);
+    console.error("❌ שגיאה בשליחה:", err.response?.data || err.message);
   }
 }
 
-import { DateTime } from 'luxon';
-
 function isTimeToSend(reminderDateTime) {
-  const now = new Date(Date.now() + (3 * 60 * 60 * 1000)); // מוסיף 3 שעות – עכשיו לפי ישראל
-  
-
-  const nowStr = now.toISOString().slice(0, 16).replace('T', ' ');
-  const reminderStr = reminderDateTime.slice(0, 16).replace('T', ' ');
-
-console.log(`🕒 Time comparison (UTC+3): now ${nowStr} vs. target ${reminderStr}`);
-
-  return nowStr === reminderStr;
+  const now = new Date(Date.now() + 3 * 60 * 60 * 1000); // זמן ישראל
+  const target = new Date(reminderDateTime);
+  return now >= target;
 }
 
-
-
 async function checkReminders() {
-  const userMap = await loadUsersFromFirestore();
+  const userMap = await loadUserMap();
+
   const snapshot = await db.collection('tasks')
     .where('was_sent', '==', false)
     .get();
 
-  console.log(`🔍 נמצאו ${snapshot.size} משימות ממתינות`);
+  if (snapshot.empty) {
+    console.log("🔕 אין משימות לא מתוזכרות");
+    return;
+  }
 
   for (const doc of snapshot.docs) {
     const task = doc.data();
     const chatId = `${task.phone_number}@c.us`;
 
-    console.log('📋 בודק משימה:', doc.id);
-    console.log('📅 reminder_datetime:', task.reminder_datetime);
+    console.log("📋 בודק משימה:", task.task_id);
+    console.log("📅 reminder_datetime:", task.reminder_datetime);
 
     if (!task.reminder_datetime) continue;
-    if (!isTimeToSend(task.reminder_datetime)) {
-      console.log('⏱ עדיין לא הזמן לשלוח את התזכורת הזו');
-      continue;
+
+    const shouldSend = isTimeToSend(task.reminder_datetime);
+
+    if (shouldSend) {
+      const message = `⏰ תזכורת: ${task.task_name || 'משימה'} בקטגוריית ${task.category || 'כללי'} ליום ${task.due_date}`;
+      await sendWhatsappMessage(chatId, message, userMap);
+      await db.collection('tasks').doc(task.task_id).update({ was_sent: true });
+      console.log("✅ תזכורת נשלחה ועדכון was_sent=true");
+    } else {
+      console.log("⏱ עדיין לא הזמן לשלוח את התזכורת הזו");
     }
-
-    const message = `⏰ תזכורת: ${task.task_name || 'משימה'} בקטגוריית ${task.category || 'כללי'} ליום ${task.due_date}`;
-    console.log(`📨 שולח תזכורת ל־${chatId}: ${message}`);
-    await sendWhatsappMessage(chatId, message, userMap);
-
-    await db.collection('tasks').doc(task.task_id).update({ was_sent: true });
-    console.log('✅ נשלחה תזכורת ונעודכן was_sent');
   }
 }
 
-setInterval(checkReminders, 60 * 1000); // בדיקה כל דקה
+// מריץ כל דקה
+setInterval(checkReminders, 60 * 1000);
