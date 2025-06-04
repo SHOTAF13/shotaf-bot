@@ -1,4 +1,3 @@
-// index.js
 import express from 'express';
 import bodyParser from 'body-parser';
 import { db } from './firebase.js';
@@ -13,30 +12,6 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
-
-// טוען משתמשים מה־Firestore
-const users = [];
-const snapshot = await db.collection('reminder').get();
-snapshot.forEach(doc => {
-  const data = doc.data();
-  users.push({
-    phone: data.phone,
-    idInstance: data.idInstance,
-    token: data.token
-  });
-});
-
-const userMap = {};
-for (const u of users) {
-  if (u.phone) {
-    const cleanPhone = u.phone.replace(/^0/, '972');
-    const chatId = `${cleanPhone}@c.us`;
-    userMap[chatId] = {
-      idInstance: u.idInstance,
-      token: u.token
-    };
-  }
-}
 
 function formatDueDate(isoDate) {
   if (!isoDate) return 'לא צוין';
@@ -81,23 +56,66 @@ async function sendWhatsappMessage(phone, message) {
   }
 }
 
+const userMap = {};
+
+// טעינת משתמשים מתוך Firestore
+import { collection, getDocs } from 'firebase/firestore';
+import { firestore } from './firebase.js';
+(async () => {
+  const snapshot = await getDocs(collection(firestore, 'reminder'));
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    if (data.phone && data.idInstance && data.token) {
+      const cleanPhone = data.phone.replace(/^0/, '972');
+      const chatId = `${cleanPhone}@c.us`;
+      userMap[chatId] = {
+        idInstance: data.idInstance,
+        token: data.token
+      };
+    }
+  });
+})();
+
 app.post('/webhook', async (req, res) => {
   try {
+    console.log("📥 התקבלה בקשת Webhook:");
+    console.log(JSON.stringify(req.body, null, 2));
+
     const type = req.body.typeWebhook;
     const sender = req.body.senderData?.sender;
     const chatId = req.body.senderData?.chatId;
     const message = req.body.messageData?.textMessageData?.textMessage || '';
 
-    if (!type || !sender || !chatId) return res.sendStatus(200);
-    if (!Object.keys(userMap).includes(sender)) return res.sendStatus(200);
-    if (sender !== chatId) return res.sendStatus(200);
-    if (!message.trim()) return res.sendStatus(200);
+    if (!type || !sender || !chatId) {
+      console.log("⚠️ שדות חסרים ב־Webhook. סוג:", type, "שולח:", sender, "צ׳אט:", chatId);
+      return res.sendStatus(200);
+    }
+
+    console.log("📦 userMap keys:", Object.keys(userMap));
+
+    if (!Object.keys(userMap).includes(sender)) {
+      console.log("❌ השולח לא מזוהה ברשימת userMap:", sender);
+      return res.sendStatus(200);
+    }
+
+    if (sender !== chatId) {
+      console.log("🚫 הודעה ממספר לא תואם לשולח עצמו:", sender, chatId);
+      return res.sendStatus(200);
+    }
+
+    if (!message.trim()) {
+      console.log("📭 התקבלה הודעה ריקה או לא מזוהה");
+      return res.sendStatus(200);
+    }
+
+    console.log("📨 הודעה מזוהה מ־", sender, ":", message);
 
     const phone = chatId.replace('@c.us', '');
     const isQuestion = message.trim().endsWith('?');
     const userId = 'usr_' + phone.slice(-6);
 
     if (isQuestion) {
+      console.log("❓ מזוהה כשאלה – נשלח ל־GPT...");
       const userMemory = await loadUserMemory(userId);
       const answer = await answerUserQuestionWithGPT(message, userMemory, userId);
       await sendWhatsappMessage(phone, answer);
@@ -128,7 +146,10 @@ app.post('/webhook', async (req, res) => {
 
     try {
       gptData = await analyzeMessageWithGPT(message);
-    } catch {}
+      console.log("🤖 פלט GPT:", gptData);
+    } catch {
+      console.warn("⚠️ GPT נכשל – מחזיר ערכים ריקים");
+    }
 
     row.task_name = gptData.task_name;
     row.category = gptData.category;
@@ -143,6 +164,7 @@ app.post('/webhook', async (req, res) => {
     }
 
     await db.collection('tasks').doc(row.task_id).set(row);
+    console.log(`✅ משימה נשמרה ב־Firestore עבור ${row.phone_number}`);
 
     const reply = `
 💡 סגור! הוספתי את זה לרשימה שלך:
