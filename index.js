@@ -161,7 +161,8 @@ app.post('/webhook', async (req, res) => {
     const [hour, minute] = gptData.reminder_time.split(':');
     const localDate = new Date(row.due_date);
     localDate.setHours(Number(hour), Number(minute), 0, 0);
-    row.reminder_datetime = localDate.toISOString();
+    row.reminder_datetime = localDate.toLocaleString('sv-SE'); // פורמט ISO בלי Z
+
 
     }
 
