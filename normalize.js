@@ -1,33 +1,37 @@
+// utils/normalize.js   (ESM)
 
-const { db } = require('../firebase');
+import { db } from '../firebase.js';
 
-const slugify = (str) =>
+// Helper
+const slugify = (str = '') =>
   str
     .toLowerCase()
     .trim()
-    .normalize('NFKD')          // מוריד ניקוד
-    .replace(/[^\w\s-]/g, '')   // מסיר אימוג׳י/סימנים
-    .replace(/\s+/g, '');       // בלי רווחים
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '');
 
-// יוצר/מאשר קיום קטגוריה ומחזיר את ה-slug
-async function ensureCategory(raw) {
-  if (!raw) return 'general';
-  const slug = slugify(raw);
-  const ref  = db.collection('categories').doc(slug);
-  const doc  = await ref.get();
+// -- קטגוריה --------------------------------------------------
+export async function ensureCategory(raw = 'כללי') {
+  raw = raw.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, '');
+  const slug = slugify(raw) || 'general';
+
+  const ref = db.collection('categories').doc(slug);
+  const doc = await ref.get();
   if (!doc.exists) {
-    await ref.set({ display: raw.replace(/[^א-ת ]/g,''), emoji: '' });
+    await ref.set({ display: raw, emoji: '' });
   }
-  return slug;                // מחזירים את ה-ID
+  return slug;                     // ← מחזיר ID
 }
 
-// אותו דבר לאדם
-async function ensurePerson(name, role) {
+// -- אדם -------------------------------------------------------
+export async function ensurePerson(name, role) {
   if (!name) return null;
+
+  name = name.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, '');
   const slug = slugify(name);
-  const ref  = db.collection('persons').doc(slug);
-  await ref.set({ name, role }, { merge: true });   // merge אם כבר קיים
+
+  const ref = db.collection('persons').doc(slug);
+  await ref.set({ name, role }, { merge: true });
   return slug;
 }
-
-module.exports = { slugify, ensureCategory, ensurePerson };

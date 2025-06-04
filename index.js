@@ -12,7 +12,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
-const { ensureCategory, ensurePerson } = require('./utils/normalize');
+import { ensureCategory, ensurePerson } from './normalize.js';
 
 function formatDueDate(isoDate) {
   if (!isoDate) return 'לא צוין';
