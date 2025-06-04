@@ -45,9 +45,9 @@ async function sendWhatsappMessage(chatId, message, userMap) {
 
 function isTimeToSend(reminderDateTime) {
   const nowUTC = new Date();
-  const nowIsrael = new Date(nowUTC.getTime() + (3 * 60 * 60 * 1000)); // הוספת 3 שעות
+  const nowIsrael = new Date(nowUTC.getTime() + 3 * 60 * 60 * 1000); // +3 שעות ל־Asia/Jerusalem
   const target = new Date(reminderDateTime);
-  return nowIsrael.getTime() >= target.getTime(); // שולח אם עבר הזמן
+  return nowIsrael.getTime() >= target.getTime();
 }
 
 async function checkReminders() {
