@@ -47,8 +47,9 @@ function isTimeToSend(reminderDateTime) {
   const nowIsrael = new Date(nowUTC.getTime() + (3 * 60 * 60 * 1000)); // הוספת 3 שעות
   const target = new Date(reminderDateTime);
 
-  const diff = target.getTime() - nowIsrael.getTime();
-  return diff >= 0 && diff <= 60 * 1000; // בטווח של דקה
+  const diff = nowIsrael.getTime() - target.getTime();
+  return diff >= 0 && diff <= 60 * 1000;
+
 }
 
 async function checkReminders() {
@@ -70,7 +71,10 @@ async function checkReminders() {
     console.log("📋 בודק משימה:", task.task_id);
     console.log("📅 reminder_datetime:", task.reminder_datetime);
 
-    if (!task.reminder_datetime) continue;
+    if (!task.reminder_datetime) {
+  console.log("❌ reminder_datetime חסר במשימה:", task.task_id);
+  continue;
+  } 
 
     const shouldSend = isTimeToSend(task.reminder_datetime);
 
