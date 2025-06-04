@@ -12,56 +12,11 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
-
-function formatDueDate(isoDate) {
-  if (!isoDate) return 'לא צוין';
-  const date = new Date(isoDate);
-  return date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
-}
-
-function formatFriendlyReminder(isoDate) {
-  if (!isoDate) return 'לא נקבעה';
-  const now = new Date(Date.now() + (3 * 60 * 60 * 1000));
-  const target = new Date(isoDate);
-  const diffInDays = (target - now) / (1000 * 60 * 60 * 24);
-  if (diffInDays <= 7) {
-    return target.toLocaleString('he-IL', {
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } else {
-    return target.toLocaleString('he-IL', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-}
-
-async function sendWhatsappMessage(phone, message) {
-  const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-  const user = userMap[chatId];
-  if (!user) return;
-
-  try {
-    await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
-      chatId,
-      message
-    });
-    console.log("📤 נשלחה הודעה ל־", chatId);
-  } catch (err) {
-    console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
-  }
-}
-
 const userMap = {};
 
-// טעינת משתמשים מתוך Firestore
-
-(async () => {
-  const snapshot = await db.collection('reminder').get();
+// ✅ טעינת משתמשים מה־users בקולקשן
+async function loadUsersFromFirestore() {
+  const snapshot = await db.collection('users').get();
   snapshot.forEach(doc => {
     const data = doc.data();
     if (data.phone && data.idInstance && data.token) {
@@ -73,7 +28,39 @@ const userMap = {};
       };
     }
   });
-})();
+  console.log("✅ טענו יוזרים:", Object.keys(userMap));
+}
+
+function formatDueDate(isoDate) {
+  if (!isoDate) return 'לא צוין';
+  const date = new Date(isoDate);
+  return date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+}
+
+function formatFriendlyReminder(isoDate) {
+  if (!isoDate) return 'לא נקבעה';
+  const now = new Date(Date.now() + 3 * 60 * 60 * 1000); // זמן ישראל
+  const target = new Date(isoDate);
+  const diffInDays = (target - now) / (1000 * 60 * 60 * 24);
+  return diffInDays <= 7
+    ? target.toLocaleString('he-IL', { weekday: 'long', hour: '2-digit', minute: '2-digit' })
+    : target.toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+async function sendWhatsappMessage(phone, message) {
+  const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
+  const user = userMap[chatId];
+  if (!user) return;
+  try {
+    await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
+      chatId,
+      message
+    });
+    console.log("📤 נשלחה הודעה ל־", chatId);
+  } catch (err) {
+    console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
+  }
+}
 
 app.post('/webhook', async (req, res) => {
   try {
@@ -91,19 +78,13 @@ app.post('/webhook', async (req, res) => {
     }
 
     console.log("📦 userMap keys:", Object.keys(userMap));
-
     if (!Object.keys(userMap).includes(sender)) {
       console.log("❌ השולח לא מזוהה ברשימת userMap:", sender);
       return res.sendStatus(200);
     }
 
-    if (sender !== chatId) {
-      console.log("🚫 הודעה ממספר לא תואם לשולח עצמו:", sender, chatId);
-      return res.sendStatus(200);
-    }
-
-    if (!message.trim()) {
-      console.log("📭 התקבלה הודעה ריקה או לא מזוהה");
+    if (sender !== chatId || !message.trim()) {
+      console.log("📭 הודעה לא תקינה");
       return res.sendStatus(200);
     }
 
@@ -114,14 +95,13 @@ app.post('/webhook', async (req, res) => {
     const userId = 'usr_' + phone.slice(-6);
 
     if (isQuestion) {
-      console.log("❓ מזוהה כשאלה – נשלח ל־GPT...");
       const userMemory = await loadUserMemory(userId);
       const answer = await answerUserQuestionWithGPT(message, userMemory, userId);
       await sendWhatsappMessage(phone, answer);
       return res.sendStatus(200);
     }
 
-    let row = {
+    const row = {
       task_id: 'tsk_' + Date.now(),
       user_id: userId,
       phone_number: phone,
@@ -183,6 +163,9 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 שרת פעיל על פורט ${PORT}`);
+// ✅ הפעלת השרת רק אחרי טעינת המשתמשים
+loadUsersFromFirestore().then(() => {
+  app.listen(PORT, () => {
+    console.log(`🚀 שרת פעיל על פורט ${PORT}`);
+  });
 });

@@ -49,7 +49,8 @@ function isTimeToSend(reminderDateTime) {
   const nowStr = now.toISOString().slice(0, 16).replace('T', ' ');
   const reminderStr = reminderDateTime.slice(0, 16).replace('T', ' ');
 
-  console.log(`🕒 השוואת זמן (UTC+3): עכשיו ${nowStr} מול יעד ${reminderStr}`);
+console.log(`🕒 Time comparison (UTC+3): now ${nowStr} vs. target ${reminderStr}`);
+
   return nowStr === reminderStr;
 }
 
