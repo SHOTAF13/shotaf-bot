@@ -77,7 +77,10 @@ async function checkReminders() {
     const shouldSend = isTimeToSend(task.reminder_datetime);
 
     if (shouldSend) {
-      const message = `⏰ תזכורת: ${task.task_name || 'משימה'} בקטגוריית ${task.category || 'כללי'} ליום ${task.due_date}`;
+    const cat = await db.collection('categories').doc(task.categoryId).get();
+    const { display = task.categoryId, emoji = '' } = cat.data() || {};
+    const message = `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}  ליום ${task.due_date}`;
+
       await sendWhatsappMessage(chatId, message, userMap);
       await db.collection('tasks').doc(task.task_id).update({ was_sent: true });
       console.log("✅ תזכורת נשלחה ועדכון was_sent=true");

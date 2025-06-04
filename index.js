@@ -12,6 +12,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
+const { ensureCategory, ensurePerson } = require('./utils/normalize');
 
 function formatDueDate(isoDate) {
   if (!isoDate) return 'לא צוין';
@@ -137,7 +138,9 @@ app.post('/webhook', async (req, res) => {
     }
 
     row.task_name = gptData.task_name;
-    row.category = gptData.category;
+    row.categoryId = await ensureCategory(gptData.category);
+    row.category   = gptData.category;  
+    row.personId   = await ensurePerson(gptData.person_name, gptData.person_role);
     row.due_date = gptData.due_date;
     row.frequency = gptData.frequency;
 
