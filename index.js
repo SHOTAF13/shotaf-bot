@@ -135,23 +135,26 @@ app.post('/webhook', async (req, res) => {
     row.frequency = gptData.frequency;
 
 if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-  const [hourRaw, minuteRaw] = gptData.reminder_time.split(':');
+  const [hourRaw, minuteRaw] = (gptData.reminder_time || '12:00').split(':');
 
   const pad = (n) => n.toString().padStart(2, '0');
 
-  const hour = pad(Number(hourRaw || 12));     // ברירת מחדל 12 אם חסר
-  const minute = pad(Number(minuteRaw || 0));  // ברירת מחדל 00 אם חסר
+  const hour = pad(Number(hourRaw));
+  const minute = pad(Number(minuteRaw));
 
-  const localDate = new Date(`${row.due_date}T${hour}:${minute}:00`);
-  const nowIsrael = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  // ליצור תאריך **בזמן ישראל**, לפי אזור זמן Asia/Jerusalem
+  const localDate = new Date(`${row.due_date}T${hour}:${minute}:00+03:00`);
 
-  // אם התזכורת לשעה שכבר עברה היום – דוחים למחר
+  // לבדוק אם הזמן כבר עבר לפי שעון ישראל
+  const now = new Date();
+  const nowIsrael = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+
   if (localDate.getTime() < nowIsrael.getTime()) {
     localDate.setDate(localDate.getDate() + 1);
   }
 
-  const utcDate = new Date(localDate.getTime() - 3 * 60 * 60 * 1000); // להמיר ל־UTC
-  row.reminder_datetime = utcDate.toISOString();
+  // שמירה בפורמט UTC
+  row.reminder_datetime = new Date(localDate).toISOString();
 }
 
 
