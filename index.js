@@ -142,7 +142,15 @@ if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
   const minute = pad(Number(minuteRaw));
 
   // יוצרים תאריך עם איזור זמן של ישראל
-  const localDateInIsrael = new Date(`${row.due_date}T${hour}:${minute}:00+03:00`);
+  const localDateInIsrael = new Date();
+  localDateInIsrael.setFullYear(Number(row.due_date.split('-')[0]));
+  localDateInIsrael.setMonth(Number(row.due_date.split('-')[1]) - 1); // חודשים מ-0
+  localDateInIsrael.setDate(Number(row.due_date.split('-')[2]));
+  localDateInIsrael.setHours(Number(hour));
+  localDateInIsrael.setMinutes(Number(minute));
+  localDateInIsrael.setSeconds(0);
+  localDateInIsrael.setMilliseconds(0);
+
 
   // שעת עכשיו לפי שעון ישראל
   const nowIsrael = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
