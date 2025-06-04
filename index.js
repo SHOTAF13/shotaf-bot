@@ -65,7 +65,10 @@ const userMap = {};
   snapshot.forEach(doc => {
     const data = doc.data();
     if (data.phone && data.idInstance && data.token) {
-      const cleanPhone = data.phone.replace(/^0/, '972');
+      const rawPhone = data.phone.trim().replace(/[^0-9]/g, '');
+    const cleanPhone = rawPhone.startsWith('0')
+    ? rawPhone.replace(/^0/, '972')
+    : rawPhone;
       const chatId = `${cleanPhone}@c.us`;
       userMap[chatId] = {
         idInstance: data.idInstance,
