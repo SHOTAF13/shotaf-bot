@@ -42,15 +42,16 @@ async function sendWhatsappMessage(chatId, message, userMap) {
 import { DateTime } from 'luxon';
 
 function isTimeToSend(reminderDateTime) {
-  const now = DateTime.now().setZone('Asia/Jerusalem');
-  const nowStr = now.toFormat('yyyy-MM-dd HH:mm');
+  const now = new Date();
+  now.setHours(now.getHours() + 3); // מוסיף 3 שעות כדי להפוך UTC לשעון ישראל
 
-  const reminder = DateTime.fromFormat(reminderDateTime.slice(0, 16).replace('T', ' '), 'yyyy-MM-dd HH:mm');
-  const reminderStr = reminder.toFormat('yyyy-MM-dd HH:mm');
+  const nowStr = now.toISOString().slice(0, 16).replace('T', ' ');
+  const reminderStr = reminderDateTime.slice(0, 16).replace('T', ' ');
 
-  console.log(`🕒 השוואת זמן (שעון ישראל): עכשיו ${nowStr} מול יעד ${reminderStr}`);
+  console.log(`🕒 השוואת זמן (UTC+3): עכשיו ${nowStr} מול יעד ${reminderStr}`);
   return nowStr === reminderStr;
 }
+
 
 
 async function checkReminders() {
