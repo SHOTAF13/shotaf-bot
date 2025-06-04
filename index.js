@@ -12,24 +12,6 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const PORT = process.env.PORT || 10000;
-const userMap = {};
-
-// ✅ טעינת משתמשים מה־users בקולקשן
-async function loadUsersFromFirestore() {
-  const snapshot = await db.collection('users').get();
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    if (data.phone && data.idInstance && data.token) {
-      const cleanPhone = data.phone.replace(/^0/, '972');
-      const chatId = `${cleanPhone}@c.us`;
-      userMap[chatId] = {
-        idInstance: data.idInstance,
-        token: data.token
-      };
-    }
-  });
-  console.log("✅ טענו יוזרים:", Object.keys(userMap));
-}
 
 function formatDueDate(isoDate) {
   if (!isoDate) return 'לא צוין';
@@ -42,15 +24,28 @@ function formatFriendlyReminder(isoDate) {
   const now = new Date(Date.now() + 3 * 60 * 60 * 1000); // זמן ישראל
   const target = new Date(isoDate);
   const diffInDays = (target - now) / (1000 * 60 * 60 * 24);
-  return diffInDays <= 7
-    ? target.toLocaleString('he-IL', { weekday: 'long', hour: '2-digit', minute: '2-digit' })
-    : target.toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+  if (diffInDays <= 7) {
+    return target.toLocaleString('he-IL', {
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } else {
+    return target.toLocaleString('he-IL', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
 }
 
 async function sendWhatsappMessage(phone, message) {
   const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
   const user = userMap[chatId];
   if (!user) return;
+
   try {
     await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
       chatId,
@@ -62,31 +57,35 @@ async function sendWhatsappMessage(phone, message) {
   }
 }
 
+const userMap = {};
+
+// טוען משתמשים מ־Firestore
+(async () => {
+  const snapshot = await db.collection('users').get();
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    if (data.phone && data.idInstance && data.token) {
+      const cleanPhone = data.phone.replace(/^0/, '972');
+      const chatId = `${cleanPhone}@c.us`;
+      userMap[chatId] = {
+        idInstance: data.idInstance,
+        token: data.token
+      };
+    }
+  });
+  console.log("📦 userMap keys:", Object.keys(userMap));
+})();
+
 app.post('/webhook', async (req, res) => {
   try {
-    console.log("📥 התקבלה בקשת Webhook:");
-    console.log(JSON.stringify(req.body, null, 2));
-
     const type = req.body.typeWebhook;
     const sender = req.body.senderData?.sender;
     const chatId = req.body.senderData?.chatId;
     const message = req.body.messageData?.textMessageData?.textMessage || '';
 
-    if (!type || !sender || !chatId) {
-      console.log("⚠️ שדות חסרים ב־Webhook. סוג:", type, "שולח:", sender, "צ׳אט:", chatId);
-      return res.sendStatus(200);
-    }
-
-    console.log("📦 userMap keys:", Object.keys(userMap));
-    if (!Object.keys(userMap).includes(sender)) {
-      console.log("❌ השולח לא מזוהה ברשימת userMap:", sender);
-      return res.sendStatus(200);
-    }
-
-    if (sender !== chatId || !message.trim()) {
-      console.log("📭 הודעה לא תקינה");
-      return res.sendStatus(200);
-    }
+    if (!type || !sender || !chatId) return res.sendStatus(200);
+    if (!Object.keys(userMap).includes(sender)) return res.sendStatus(200);
+    if (sender !== chatId || !message.trim()) return res.sendStatus(200);
 
     console.log("📨 הודעה מזוהה מ־", sender, ":", message);
 
@@ -101,7 +100,7 @@ app.post('/webhook', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const row = {
+    let row = {
       task_id: 'tsk_' + Date.now(),
       user_id: userId,
       phone_number: phone,
@@ -138,8 +137,8 @@ app.post('/webhook', async (req, res) => {
     if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
       const [hour, minute] = gptData.reminder_time.split(':');
       const localDate = new Date(`${row.due_date}T${hour}:${minute}:00`);
-      const israelTime = new Date(localDate.getTime() - (3 * 60 * 60 * 1000));
-      row.reminder_datetime = israelTime.toISOString().slice(0, 19).replace('T', ' ');
+      const utcDate = new Date(localDate.getTime() - (3 * 60 * 60 * 1000)); // להפוך ל־UTC לפי זמן ישראל
+      row.reminder_datetime = utcDate.toISOString();
     }
 
     await db.collection('tasks').doc(row.task_id).set(row);
@@ -163,9 +162,6 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// ✅ הפעלת השרת רק אחרי טעינת המשתמשים
-loadUsersFromFirestore().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 שרת פעיל על פורט ${PORT}`);
-  });
+app.listen(PORT, () => {
+  console.log(`🚀 שרת פעיל על פורט ${PORT}`);
 });
