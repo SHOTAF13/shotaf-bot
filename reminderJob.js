@@ -41,8 +41,9 @@ async function sendWhatsappMessage(chatId, message, userMap) {
 
 function isTimeToSend(reminderDateTime) {
   const now = new Date();
-  const nowStr = now.toLocaleString('sv-SE').slice(0, 16); // yyyy-MM-dd HH:mm
-  const reminderStr = reminderDateTime.slice(0, 16);
+  const nowStr = now.toISOString().slice(0, 16).replace('T', ' '); // YYYY-MM-DD HH:mm
+  const reminderStr = reminderDateTime.slice(0, 16).replace('T', ' '); // התאמה גם אם יש T
+
   console.log(`🕒 השוואת זמן: עכשיו ${nowStr} מול יעד ${reminderStr}`);
   return nowStr === reminderStr;
 }
