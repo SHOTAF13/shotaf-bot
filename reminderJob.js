@@ -3,6 +3,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
+console.log("📦 userMap keys:", Object.keys(userMap));
 
 async function loadUsersFromFirestore() {
   const snapshot = await db.collection('users').get();
@@ -42,8 +43,8 @@ async function sendWhatsappMessage(chatId, message, userMap) {
 import { DateTime } from 'luxon';
 
 function isTimeToSend(reminderDateTime) {
-  const now = new Date();
-  now.setHours(now.getHours() + 3); // מוסיף 3 שעות כדי להפוך UTC לשעון ישראל
+  const now = new Date(Date.now() + (3 * 60 * 60 * 1000)); // מוסיף 3 שעות – עכשיו לפי ישראל
+  
 
   const nowStr = now.toISOString().slice(0, 16).replace('T', ' ');
   const reminderStr = reminderDateTime.slice(0, 16).replace('T', ' ');
