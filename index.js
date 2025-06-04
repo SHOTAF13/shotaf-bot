@@ -134,18 +134,26 @@ app.post('/webhook', async (req, res) => {
     row.due_date = gptData.due_date;
     row.frequency = gptData.frequency;
 
-   if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-  const [hour, minute] = gptData.reminder_time.split(':');
+if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
+  const [hourRaw, minuteRaw] = gptData.reminder_time.split(':');
+
+  const pad = (n) => n.toString().padStart(2, '0');
+
+  const hour = pad(Number(hourRaw || 12));     // ברירת מחדל 12 אם חסר
+  const minute = pad(Number(minuteRaw || 0));  // ברירת מחדל 00 אם חסר
+
   const localDate = new Date(`${row.due_date}T${hour}:${minute}:00`);
   const nowIsrael = new Date(Date.now() + 3 * 60 * 60 * 1000);
 
-  // אם השעה המבוקשת כבר עברה – דוחים ליום המחרת
+  // אם התזכורת לשעה שכבר עברה היום – דוחים למחר
   if (localDate.getTime() < nowIsrael.getTime()) {
     localDate.setDate(localDate.getDate() + 1);
   }
-  row.reminder_datetime = localDate.toISOString();
 
+  const utcDate = new Date(localDate.getTime() - 3 * 60 * 60 * 1000); // להמיר ל־UTC
+  row.reminder_datetime = utcDate.toISOString();
 }
+
 
 
     await db.collection('tasks').doc(row.task_id).set(row);
