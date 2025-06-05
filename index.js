@@ -147,6 +147,9 @@ app.post('/webhook', async (req, res) => {
   // שמירה באוסף entries (או notes, לפי מה שבחרת)
   await db.collection('entries').doc(row.entry_id).set(row);
 
+  console.log('title debug:', gptData.note_title);   // בדיקה צריך להדפיס את שם הפתק"
+
+
   // מוסיף כותרת לרשימת מילות-הזיכרון
  await updateUserMemory(userId, { ...(row.title && { keywords:{ [row.title]:'note' } }) });
 

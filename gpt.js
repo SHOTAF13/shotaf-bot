@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { db } from './firebase.js';
 import { updateUserMemory } from './updateUserMemory.js';
 
+
 dotenv.config();
 
 const openai = new OpenAI({
