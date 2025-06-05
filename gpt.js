@@ -60,20 +60,23 @@ export async function analyzeMessageWithGPT(message, userId = null) {
   const today = new Date().toISOString().split('T')[0];
 
   const prompt = `
-Analyze the following message in Hebrew and return a valid JSON with 7 fields:
+Analyze the following message in Hebrew and return a valid JSON with 10 fields:
 
 Message: "${message}"
 
 Return these keys:
-1. task_name – Short task summary
-2. category – One of: משפחה, זוגיות, עבודה, בריאות, חברים, רכב, לימודים, קניות, כללי
-3. due_date – Date in YYYY-MM-DD (assume "היום" is ${today})
-4. frequency – יומי, שבועי, חודשי, שנתי, חד פעמי (default: חד פעמי)
-5. reminder_time – Time in HH:MM (default: 12:00)
-6. person_name – A name mentioned (e.g., שובל)
-7. person_role – If possible, the relation (e.g., חברה, קולגה)
+1. entry_type   - "task" / "note"
+2. task_name    - אם entry_type == "task"
+3. category - One of: משפחה, זוגיות, עבודה, בריאות, חברים, רכב, לימודים, קניות, כללי
+4. due_date - Date in YYYY-MM-DD (assume "היום" is ${today})
+5. frequency - יומי, שבועי, חודשי, שנתי, חד פעמי (default: חד פעמי)
+6. reminder_time - Time in HH:MM (default: 12:00)
+7. note_title  -  אם entry_type == "note"
+8. note_body   -  אם entry_type == "note"
+9. person_name - A name mentioned (e.g., שובל)
+10. person_role - If possible, the relation (e.g., חברה, קולגה)
 
-Return only valid JSON – no comments or explanations.
+Return only valid JSON - no comments or explanations.
 🗣 All fields must be in **Hebrew**.
 `.trim();
 
@@ -88,6 +91,11 @@ Return only valid JSON – no comments or explanations.
 
     const cleanedResponse = responseText.trim().replace(/^```(json)?|```$/g, '');
     const parsed = JSON.parse(cleanedResponse);
+
+    // normalize: אם entry_type === 'note' ואין note_title – נייצר כותרת מה-body
+    if (parsed.entry_type === 'note' && !parsed.note_title && parsed.note_body) {
+    parsed.note_title = parsed.note_body.slice(0, 40); // 40 תווים ראשונים
+   }
 
     const parsedDate = parseHebrewDate(message);
     if (parsedDate) parsed.due_date = parsedDate;
@@ -125,15 +133,33 @@ export async function loadUserMemory(userId) {
 
 export async function answerUserQuestionWithGPT(question, memory, userId = null) {
   const memorySummary = JSON.stringify(memory, null, 2);
+  // רשימת כל הפתקים ש-updateUserMemory סימן
+// טוען את הזיכרון
+const notes = Object.keys(memory.keywords || {})
+  .filter(k => memory.keywords[k] === 'note');
 
-  const prompt = `
+const notesBlock = notes.length
+  ? notes.map(t => `• ${t}`).join('\n')
+  : 'אין פתקים שנשמרו';
+
+
+const prompt = `
 המשתמש שואל: "${question}"
+
+פתקי המשתמש:
+${notesBlock}
 
 להלן מידע על מה שאתה יודע עליו:
 ${memorySummary}
 
-ענה בעברית ובצורה ברורה בקצרה על פי המידע הקיים. אם אין מידע רלוונטי, אמור "לא מצאתי מידע מתאים".
+ענה בעברית ובצורה קצרה על פי המידע הקיים.
+
+🟡 אם השאלה מתאימה לכותרת פתק — החזר **בדיוק**:
+[NOTE] <כותרת>
+
+🔴 אם אין התאמה, אמור: "לא מצאתי מידע מתאים".
 `.trim();
+
 
   try {
     const completion = await openai.chat.completions.create({
@@ -142,6 +168,16 @@ ${memorySummary}
     });
 
     const reply = completion.choices[0]?.message?.content || 'לא מצאתי מידע.';
+    // אם GPT מחזיר תווית פתק
+if (reply.startsWith('[NOTE]')) {
+  const title = reply.replace('[NOTE]', '').trim();
+  const snap = await db.collection('entries').where('user_id', '==', userId).where('title', '==', title).limit(1).get();
+                                
+  if (!snap.empty) {
+    const body = snap.docs[0].data().body || '';
+    reply = `**${title}**\n${body}`;
+  }
+}
     return reply;
   } catch (err) {
     console.error("❌ שגיאה בתשובת GPT:", err.message || err);

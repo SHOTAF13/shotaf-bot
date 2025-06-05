@@ -132,6 +132,30 @@ app.post('/webhook', async (req, res) => {
 
     try {
      gptData = await analyzeMessageWithGPT(message, userId);
+     // ── ➊ NEW: טיפול בהערות ──────────────────────────────
+  if (gptData.entry_type === 'note') {
+  const row = {
+    entry_id: 'ent_' + Date.now(),
+    user_id:  userId,
+    entry_type: 'note',
+    title: gptData.note_title,
+    body:  gptData.note_body,
+    created_at: new Date().toISOString()
+  };
+
+  // שמירה באוסף entries (או notes, לפי מה שבחרת)
+  await db.collection('entries').doc(row.entry_id).set(row);
+
+  // מוסיף כותרת לרשימת מילות-הזיכרון
+  await updateUserMemory(userId, {
+    keywords: { [row.title]: 'note' }
+  });
+
+  await sendWhatsappMessage(phone,
+    `📝 הערה נשמרה!\nכותרת: ${row.title}`);
+
+  return res.sendStatus(200);      // ← יוצא מפונקציה! לא יורד לקוד ה-task
+  }
      console.log("🤖 פלט GPT:", gptData);
     } catch {
       console.warn("⚠️ GPT נכשל – מחזיר ערכים ריקים");
