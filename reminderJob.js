@@ -64,6 +64,7 @@ async function checkReminders() {
 
   for (const doc of snapshot.docs) {
     const task = doc.data();
+    const chatId = `${task.phone_number}@c.us`;
     const catId = task.categoryId || 'general';
 
     console.log("📋 בודק משימה:", task.task_id);

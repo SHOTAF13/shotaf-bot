@@ -134,7 +134,7 @@ app.post('/webhook', async (req, res) => {
      gptData = await analyzeMessageWithGPT(message, userId);
      // ── ➊ NEW: טיפול בהערות ──────────────────────────────
   if (gptData.entry_type === 'note') {
-  const row = {
+    const row = {
     entry_id: 'ent_' + Date.now(),
     user_id:  userId,
     entry_type: 'note',
