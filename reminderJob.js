@@ -79,7 +79,7 @@ async function checkReminders() {
     if (shouldSend) {
     const catId  = task.categoryId || 'general';           // Fallback
    const catDoc = await db.collection('categories').doc(catId).get();
-    const { display = task.categoryId, emoji = '' } = cat.data() || {};
+    const { display = catId,emoji = '' } = catDoc.data() || {};
     const message = `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}  ליום ${task.due_date}`;
 
       await sendWhatsappMessage(chatId, message, userMap);
