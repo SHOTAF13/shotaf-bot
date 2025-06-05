@@ -131,8 +131,8 @@ app.post('/webhook', async (req, res) => {
     };
 
     try {
-      gptData = await analyzeMessageWithGPT(message);
-      console.log("🤖 פלט GPT:", gptData);
+     gptData = await analyzeMessageWithGPT(message, userId);
+     console.log("🤖 פלט GPT:", gptData);
     } catch {
       console.warn("⚠️ GPT נכשל – מחזיר ערכים ריקים");
     }
