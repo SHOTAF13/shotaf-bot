@@ -59,6 +59,10 @@ function formatFriendlyReminder(isoDate) {
       : { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }
   );
 }
+if (process.env.DEBUG_MEDIA === '1') {
+  console.dir(req.body, { depth: 4 });
+}
+
 
 /**
  * שולח הודעת WhatsApp למספר (לפי Green-API instance/token במפת המשתמשים)
