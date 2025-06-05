@@ -1,6 +1,6 @@
 // utils/normalize.js   (ESM)
 
-import { db } from '../firebase.js';
+import { db } from './firebase.js';
 
 // Helper
 const slugify = (str = '') =>
