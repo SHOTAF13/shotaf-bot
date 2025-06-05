@@ -133,6 +133,7 @@ app.post('/webhook', async (req, res) => {
 
     try {
      gptData = await analyzeMessageWithGPT(message, userId);
+
      // ── ➊ NEW: טיפול בהערות ──────────────────────────────
   if ((gptData.entry_type || '').trim().toLowerCase() === 'note') {
     const row = {
@@ -146,7 +147,6 @@ app.post('/webhook', async (req, res) => {
 
   // שמירה באוסף entries (או notes, לפי מה שבחרת)
   await db.collection('entries').doc(row.entry_id).set(row);
-
   console.log('title debug:', gptData.note_title);   // בדיקה צריך להדפיס את שם הפתק"
 
 
@@ -162,6 +162,29 @@ app.post('/webhook', async (req, res) => {
     } catch {
       console.warn("⚠️ GPT נכשל – מחזיר ערכים ריקים");
     }
+    /* ------------- עדכון פתק קיים ------------- */
+ if ((gptData.entry_type || '').trim().toLowerCase() === 'note_update') {
+  // 1. מוצאים את הפתק לפי user_id + title
+  const snap = await db.collection('entries')
+                       .where('user_id', '==', userId)
+                       .where('title',   '==', gptData.note_title)
+                       .limit(1).get();
+
+  if (snap.empty) {
+    await sendWhatsappMessage(phone, `לא מצאתי פתק בשם: ${gptData.note_title}`);
+    return res.sendStatus(200);
+  }
+
+  // 2. מעדכנים BODY + תאריך
+  const ref  = snap.docs[0].ref;
+  const old  = snap.docs[0].data().body || '';
+  const body = `${old}\n${gptData.note_append}`;
+  await ref.update({ body, updated_at: new Date().toISOString() });
+
+  await sendWhatsappMessage(phone, '✅ הפתק עודכן!');
+  return res.sendStatus(200);
+}
+
 
     row.task_name = gptData.task_name;
     row.categoryId = await ensureCategory(gptData.category);
@@ -200,7 +223,32 @@ if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
   row.reminder_datetime = new Date(localDateInIsrael).toISOString();
 }
 
+const weeklyRegex = /מה.*(יש|רשום).*(השבוע)/i;
+if (weeklyRegex.test(message)) {
+  const today   = new Date();
+  const until   = new Date(today); until.setDate(today.getDate() + 7);
 
+  const snap = await db.collection('tasks')
+    .where('user_id','==',userId)
+    .where('due_date','>=', today.toISOString().slice(0,10))
+    .where('due_date','<=', until.toISOString().slice(0,10))
+    .get();
+
+  if (snap.empty) {
+    await sendWhatsappMessage(phone, 'אין משימות לשבוע הקרוב 🙌');
+    return res.sendStatus(200);
+  }
+
+  // סידור כרונולוגי
+  const list = snap.docs
+      .map(d => d.data())
+      .sort((a,b) => a.due_date.localeCompare(b.due_date))
+      .map(t => `• ${t.due_date} – ${t.task_name}`)
+      .join('\n');
+
+  await sendWhatsappMessage(phone, `🗓️ השבוע:\n${list}`);
+  return res.sendStatus(200);
+}
 
 
     await db.collection('tasks').doc(row.task_id).set(row);

@@ -81,7 +81,19 @@ async function checkReminders() {
     const catId  = task.categoryId || 'general';           // Fallback
    const catDoc = await db.collection('categories').doc(catId).get();
     const { display = catId,emoji = '' } = catDoc.data() || {};
-    const message = `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}  ליום ${task.due_date}`;
+    const gptPrompt = `
+המשימה: "${task.task_name}"
+הקטגוריה: "${display}"
+התאריך: ${task.due_date}
+
+כתוב תזכורת קצרה ונעימה בעברית, כולל אימוג'י אחד מתאים.
+`.trim();
+
+const completion = await openai.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages: [{ role:'user', content:gptPrompt }]
+});
+   const message = completion.choices[0]?.message?.content ||  `⏰ תזכורת: ${task.task_name} (${display})`;
 
       await sendWhatsappMessage(chatId, message, userMap);
       await db.collection('tasks').doc(task.task_id).update({ was_sent: true });

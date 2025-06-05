@@ -25,6 +25,8 @@ export async function ensureCategory(raw = 'כללי') {
 export async function ensurePerson(name, role) {
   if (!name) return null;
   name = name.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, '');
+  name = name.replace(/^(בן|בת|דוד[ה]?|אח[ו]ת)\s+/,''); // מסיר מילת קשר
+  name = name.split(/\s+/)[0];                           // לוקח מילה ראשונה
   const slug = slugify(name);
 
   console.log('[ensurePerson] name:', name, '→ slug:', slug);

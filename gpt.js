@@ -60,25 +60,34 @@ function extractTimeFromText(text) {
 export async function analyzeMessageWithGPT(message, userId = null) {
   const today = new Date().toISOString().split('T')[0];
 
-  const prompt = `
+const prompt = `
 Analyze the following message in Hebrew and return a valid JSON with 10 fields:
 
 Message: "${message}"
 
 Return these keys:
-1. entry_type   - "task" / "note"
-2. task_name    - אם entry_type == "task"
-3. category - One of: משפחה, זוגיות, עבודה, בריאות, חברים, רכב, לימודים, קניות, כללי
-4. due_date - Date in YYYY-MM-DD (assume "היום" is ${today})
-5. frequency - יומי, שבועי, חודשי, שנתי, חד פעמי (default: חד פעמי)
-6. reminder_time - Time in HH:MM (default: 12:00)
-7. note_title  -  אם entry_type == "note"
-8. note_body   -  אם entry_type == "note"
-9. person_name - A name mentioned (e.g., שובל)
-10. person_role - If possible, the relation (e.g., חברה, קולגה)
+1. entry_type     – "task" / "note" / "note_update"
+2. task_name      – אם entry_type == "task"
+3. category       – ...
+4. due_date       – Date in YYYY-MM-DD (assume "היום" is ${today})
+5. frequency      – יומי, שבועי, ...
+6. reminder_time  – HH:MM (default: 12:00)
+7. note_title     – אם entry_type == "note" או "note_update"
+8. note_body      – אם entry_type == "note"
+9. note_append    – אם entry_type == "note_update"  (מה להוסיף)
+10. person_name   – ...
+11. person_role   – ...
 
-Return only valid JSON - no comments or explanations.
-🗣 All fields must be in **Hebrew**.
+### Few-shot example ###
+Input: "תוסיף לסלט גם גמבה"
+Output: {
+  "entry_type": "note_update",
+  "note_title": "מתכון לסלט",
+  "note_append": "גמבה"
+}
+
+Return **only JSON** – no comments or explanations.
+🗣 כל הערכים בעברית.
 `.trim();
 
   try {
