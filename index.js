@@ -133,7 +133,7 @@ app.post('/webhook', async (req, res) => {
     try {
      gptData = await analyzeMessageWithGPT(message, userId);
      // ── ➊ NEW: טיפול בהערות ──────────────────────────────
-  if (gptData.entry_type === 'note') {
+  if ((gptData.entry_type || '').trim().toLowerCase() === 'note') {
     const row = {
     entry_id: 'ent_' + Date.now(),
     user_id:  userId,
