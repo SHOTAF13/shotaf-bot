@@ -162,6 +162,7 @@ ${JSON.stringify(memory,null,2)}
 
 ענה בעברית קצרה.
 🟡 אם השאלה תואמת כותרת פתק – החזר "[NOTE] <כותרת>"
+🟢 אם יש קובץ מתאים החזר "[FILE] <כותרת>"
 🔴 אחרת – החזר "לא מצאתי מידע מתאים".
 `.trim();
 
@@ -189,6 +190,44 @@ ${JSON.stringify(memory,null,2)}
     return 'הייתה שגיאה בעיבוד השאלה שלך.';
   }
 }
+
+if (reply.startsWith('[FILE]') && userId){
+  const title = reply.replace('[FILE]','').trim();
+  const snap  = await db.collection('entries')
+               .where('user_id','==',userId)
+               .where('title','==',title)
+               .limit(1).get();
+  if (!snap.empty){
+    const { url } = snap.docs[0].data();
+    reply = `📎 ${title}\n${url}`;
+  }
+}
+
+async function tagsFromCaption(caption){
+  const prompt = `
+כתוב רשימת תגיות (מילים בודדות) בעברית שמתארות את הביטוי:
+"${caption}"
+החזר JSON עם מפתח יחיד "tags" שמכיל מערך מילים.
+דוגמה:
+Input: "קבלה חשמל מאי 2025"
+Output: {"tags":["קבלה","חשמל","2025","מאי"]}
+`.trim();
+
+  try{
+    const res = await openai.chat.completions.create({
+      model:'gpt-4o-mini',
+      messages:[{role:'user',content:prompt}]
+    });
+    const txt   = res.choices[0]?.message?.content || '{}';
+    const parsed= JSON.parse(txt.replace(/^```(json)?|```$/g,''));
+    return Array.isArray(parsed.tags) ? parsed.tags : [];
+  }catch(e){
+    console.warn('⚠️ GPT tags failed', e.message);
+    return [];
+  }
+}
+
+
 
 /* ------------------------------------------------------------------ */
 /*                       FALLBACK OBJECT                              */

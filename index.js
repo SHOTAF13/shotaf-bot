@@ -7,6 +7,8 @@ import dotenv                     from 'dotenv';
 import axios                      from 'axios';
 
 import { db }                     from './firebase.js';
+import fs                         from 'node:fs/promises';
+import path                       from 'node:path';
 import {
   analyzeMessageWithGPT,
   answerUserQuestionWithGPT,
@@ -91,6 +93,67 @@ async function sendWhatsappMessage(phone, message) {
   });
   console.log('📦 userMap keys:', Object.keys(userMap));
 })();
+
+/* ---------- A. Media message ---------- */
+const typeMsg  = req.body.messageData?.typeMessage;          // image / document / ...
+if (typeMsg === 'image' || typeMsg === 'document') {
+  const downloadUrl = req.body.messageData?.[`${typeMsg}MessageData`]?.downloadUrl;
+  const mime        = req.body.messageData?.[`${typeMsg}MessageData`]?.mimeType;
+
+  // הטקסט הנלווה (caption) – ישמש ככותרת
+  const caption = req.body.messageData?.extendedTextMessageData?.text
+               || req.body.messageData?.textMessageData?.textMessage
+               || 'קובץ ללא שם';
+  const tags    = await tagsFromCaption(caption);
+
+  /* 1. שמירה ב-Storage */
+  const { url, bucketPath } = await saveMediaToStorage(downloadUrl, mime, userId);
+
+  /* 2. מסמך entries */
+  const entry_id = 'ent_' + Date.now();
+  await db.collection('entries').doc(entry_id).set({
+    entry_id,
+    user_id : userId,
+    entry_type : 'file',
+    title  : caption,
+    url,
+    bucketPath,
+    mime,
+    tags   : tags.length ? tags : ['קובץ'],
+    created_at : new Date().toISOString()
+  });
+
+  /**
+ * מוריד קובץ מ-Green-API ומעלה ל-Firebase Storage.
+ * @param {string} downloadUrl
+ * @param {string} mime
+ * @param {string} userId
+ * @returns {Promise<{url:string,bucketPath:string,mime:string}>}
+ */
+async function saveMediaToStorage(downloadUrl, mime, userId){
+  const resp = await axios.get(downloadUrl,{ responseType:'arraybuffer' });
+  const ext  = mime.split('/')[1] || 'bin';
+  const bucketPath = `users/${userId}/${Date.now()}.${ext}`;
+  const tmp  = path.join('/tmp', path.basename(bucketPath));
+
+  await fs.writeFile(tmp, resp.data);
+  await storage.upload(tmp,{ destination: bucketPath });
+  await fs.unlink(tmp);
+
+  const [url] = await storage.file(bucketPath).getSignedUrl({
+    action:'read', expires:'2028-01-01'   // 3 שנים
+  });
+  return { url, bucketPath, mime };
+}
+
+
+  /* 3. זיכרון – מוסיף keyword */
+  await updateUserMemory(userId, { keywords:{ [caption]: 'file' } });
+
+  await sendWhatsappMessage(phone, `📎 קובץ נשמר!\nכותרת: ${caption}`);
+  return res.sendStatus(200);
+}
+
 
 /* ------------------------------------------------------------------ */
 /*                        Main webhook route                          */
@@ -190,6 +253,45 @@ app.post('/webhook', async (req,res)=>{
       await sendWhatsappMessage(phone,`🗓️ השבוע:\n${list}`);
       return res.sendStatus(200);
     }
+    const receiptsRegex = /כל.*הקבלות/i;
+if (receiptsRegex.test(message)) {
+  const snap = await db.collection('entries')
+    .where('user_id','==',userId)
+    .where('entry_type','==','file')
+    .where('tags','array-contains','קבלה')
+    .get();
+
+  if (snap.empty){
+    await sendWhatsappMessage(phone,'לא נמצאו קבלות 🤷‍♂️');
+    return res.sendStatus(200);
+  }
+  const list = snap.docs.map(d=>`• ${d.data().title}\n${d.data().url}`).join('\n\n');
+  await sendWhatsappMessage(phone,`🧾 הקבלות שלך:\n${list}`);
+  return res.sendStatus(200);
+}
+
+const allFilesRegex = /כל\s+(.+?)\s*$/;   // לדוגמה: "כל הקבלות", "כל המתכונים"
+const match = message.match(allFilesRegex);
+
+if (match && match[1]) {
+  const tag = match[1].trim();            // "הקבלות"  / "המתכונים"
+  const snap = await db.collection('entries')
+    .where('user_id','==',userId)
+    .where('entry_type','==','file')
+    .where('tags','array-contains', tag)   // תייג בזמן ההעלאה
+    .get();
+
+  if (snap.empty){
+    await sendWhatsappMessage(phone,`לא נמצאו ${tag}.`);
+    return res.sendStatus(200);
+  }
+
+  const txt = snap.docs.map(d=>`• ${d.data().title}\n${d.data().url}`).join('\n\n');
+  await sendWhatsappMessage(phone,`📁 ${tag}:\n${txt}`);
+  return res.sendStatus(200);
+}
+
+
 
     /* ---------- 5. TASK (default) ---------- */
     const taskRow = {
