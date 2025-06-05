@@ -31,6 +31,8 @@ export async function ensurePerson(name, role) {
   name = name.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, '');
   const slug = slugify(name);
 
+  if (!slug) return null;
+  
   const ref = db.collection('persons').doc(slug);
   await ref.set({ name, role }, { merge: true });
   return slug;
