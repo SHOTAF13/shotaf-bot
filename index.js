@@ -94,7 +94,31 @@ async function sendWhatsappMessage(phone, message) {
   console.log('📦 userMap keys:', Object.keys(userMap));
 })();
 
-/* ---------- A. Media message ---------- */
+
+
+/* ------------------------------------------------------------------ */
+/*                        Main webhook route                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Webhook from Green-API.  
+ * 1. אם זו שאלה (מסתיימת ב-?) – משיב מהזיכרון.  
+ * 2. אחרת:  
+ *    • note → יוצר/מעדכן פתק.  
+ *    • task → שומר משימה + תזכורת.  
+ *    • “מה יש לי השבוע?” → שולח סיכום שבוע.
+ */
+app.post('/webhook', async (req,res)=>{
+  try {
+    /* ---------- sanity checks ---------- */
+    const { typeWebhook:type, senderData, messageData } = req.body;
+    const sender  = senderData?.sender;
+    const chatId  = senderData?.chatId;
+    const message = messageData?.textMessageData?.textMessage || '';
+    if (!type||!sender||!chatId || sender!==chatId || !message.trim()) return res.sendStatus(200);
+    if (!userMap[sender]) return res.sendStatus(200);
+
+    /* ---------- A. Media message ---------- */
 const typeMsg  = req.body.messageData?.typeMessage;          // image / document / ...
 if (typeMsg === 'image' || typeMsg === 'document') {
   const downloadUrl = req.body.messageData?.[`${typeMsg}MessageData`]?.downloadUrl;
@@ -154,28 +178,6 @@ async function saveMediaToStorage(downloadUrl, mime, userId){
   return res.sendStatus(200);
 }
 
-
-/* ------------------------------------------------------------------ */
-/*                        Main webhook route                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * Webhook from Green-API.  
- * 1. אם זו שאלה (מסתיימת ב-?) – משיב מהזיכרון.  
- * 2. אחרת:  
- *    • note → יוצר/מעדכן פתק.  
- *    • task → שומר משימה + תזכורת.  
- *    • “מה יש לי השבוע?” → שולח סיכום שבוע.
- */
-app.post('/webhook', async (req,res)=>{
-  try {
-    /* ---------- sanity checks ---------- */
-    const { typeWebhook:type, senderData, messageData } = req.body;
-    const sender  = senderData?.sender;
-    const chatId  = senderData?.chatId;
-    const message = messageData?.textMessageData?.textMessage || '';
-    if (!type||!sender||!chatId || sender!==chatId || !message.trim()) return res.sendStatus(200);
-    if (!userMap[sender]) return res.sendStatus(200);
 
     /* ---------- basic vars ---------- */
     const phone     = chatId.replace('@c.us','');
