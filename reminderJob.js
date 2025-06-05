@@ -69,7 +69,14 @@ function isTimeToSend(reminderDateTime) {
 /* ------------------------------------------------------------------ */
 
 /**
- * שורק משימות פתוחות, משגר תזכורות ושם was_sent=true
+ * סורק משימות פתוחות, שולח תזכורות “חכמות”,
+ * ומעדכן was_sent או reminder_datetime לפי תדירות (frequency).
+ *
+ * frequency:
+ *   • ""   | "חד פעמי"        → was_sent = true
+ *   • "יומי"                  → reminder +1d
+ *   • "שבועי" | "כל יום ראשון"→ reminder +7d
+ *   • "חודשי"                 → reminder +1m (שומר על יום בחודש)
  */
 async function checkReminders() {
   const userMap = await loadUserMap();
@@ -83,16 +90,16 @@ async function checkReminders() {
     const task   = doc.data();
     const chatId = `${task.phone_number}@c.us`;
 
-    if (!task.reminder_datetime) {
+    if (!task.reminder_datetime){
       console.log('❌ reminder_datetime חסר:', task.task_id);
       continue;
     }
-    if (!isTimeToSend(task.reminder_datetime)) {
+    if (!isTimeToSend(task.reminder_datetime)){
       console.log('⏱ עדיין לא הזמן למשימה', task.task_id);
       continue;
     }
 
-    /* ---------- הכנה לטקסט תזכורת “חכם” ---------- */
+    /* ---------- בניית הודעה חכמה באמצעות GPT ---------- */
     const catId  = task.categoryId || 'general';
     const catDoc = await db.collection('categories').doc(catId).get();
     const { display = catId, emoji = '' } = catDoc.data() || {};
@@ -113,11 +120,43 @@ async function checkReminders() {
     const message = completion.choices[0]?.message?.content
                  || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
 
+    /* ---------- שליחה ---------- */
     await sendWhatsappMessage(chatId, message, userMap);
-    await doc.ref.update({ was_sent:true });
+
+    /* ---------- גלגול קדימה / סימון נשלח ---------- */
+    const updateData = {};
+    const freq = (task.frequency || '').trim();
+
+    switch (freq) {
+      case 'יומי':
+        updateData.reminder_datetime = new Date(
+          new Date(task.reminder_datetime).getTime() + 24*60*60*1000
+        ).toISOString();
+        break;
+
+      case 'שבועי':
+      case 'כל יום ראשון':
+        updateData.reminder_datetime = new Date(
+          new Date(task.reminder_datetime).getTime() + 7*24*60*60*1000
+        ).toISOString();
+        break;
+
+      case 'חודשי': {
+        const d = new Date(task.reminder_datetime);
+        d.setMonth(d.getMonth() + 1);
+        updateData.reminder_datetime = d.toISOString();
+        break;
+      }
+
+      default:          // חד פעמי או ריק
+        updateData.was_sent = true;
+    }
+
+    await doc.ref.update(updateData);
     console.log('✅ תזכורת נשלחה →', task.task_id);
   }
 }
+
 
 /* ------------------------------------------------------------------ */
 /*                         SCHEDULER (every 1 min)                    */
