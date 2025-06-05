@@ -2,6 +2,9 @@
 
 import { db } from './firebase.js';
 
+console.log('[ensureCategory] raw:', raw, 'slug:', slug);
+console.log('[ensurePerson] name:', name, 'slug:', slug);
+
 // Helper
 const slugify = (str = '') =>
   str
@@ -28,11 +31,11 @@ export async function ensureCategory(raw = 'כללי') {
 export async function ensurePerson(name, role) {
   if (!name) return null;
 
-  name = name.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, '');
+  name = name.replace(/[^\p{L}\p{N}\s-]/gu, '') 
   const slug = slugify(name);
 
   if (!slug) return null;
-  
+
   const ref = db.collection('persons').doc(slug);
   await ref.set({ name, role }, { merge: true });
   return slug;
