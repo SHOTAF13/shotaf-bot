@@ -23,14 +23,12 @@ const daysMap = {
 /* ------------------------------------------------------------------ */
 /*                     DATE / TIME HELPERS                            */
 /* ------------------------------------------------------------------ */
-/** מזהה “היום/מחר/יום שני” ומחזיר YYYY-MM-DD או '' */
 function parseHebrewDate(txt){
   const today = new Date();
   const lower = txt.toLowerCase();
 
   if (lower.includes('היום'))  return today.toISOString().split('T')[0];
-  if (lower.includes('מחר'))   return new Date(today.setDate(today.getDate()+1))
-                                   .toISOString().split('T')[0];
+  if (lower.includes('מחר'))   return new Date(today.setDate(today.getDate()+1)).toISOString().split('T')[0];
 
   for (const [label,targetDay] of Object.entries(daysMap)){
     if (!txt.includes(label)) continue;
@@ -41,7 +39,6 @@ function parseHebrewDate(txt){
   return '';
 }
 
-/** מחלץ HH:MM או מחזיר ברירת-מחדל לפי מילת זמן */
 function extractTimeFromText(txt){
   const m = txt.match(/\b(0?[0-9]|1[0-9]|2[0-3]):([0-5][0-9])\b/);
   if (m) return m[0];
@@ -55,41 +52,10 @@ function extractTimeFromText(txt){
 /* ------------------------------------------------------------------ */
 /*                        GPT ANALYSIS                                */
 /* ------------------------------------------------------------------ */
-
-/**
- * מפרק הודעה עברית למבנה JSON (משימה/פתק/עדכון פתק).
- * @param {string}  message
- * @param {string?} userId  – אם מוגדר, יעודכן זיכרון Firestore
- * @returns {Promise<object>} parsed GPT result
- */
 export async function analyzeMessageWithGPT(message, userId=null){
   const today = new Date().toISOString().split('T')[0];
 
-  const prompt = `
-Analyze the following message in Hebrew and return a valid JSON with 10 fields:
-
-Message: "${message}"
-
-Return these keys:
-1. entry_type     – "task" / "note" / "note_update"
-2. task_name      – (task only)
-3. category
-4. due_date       – assume "היום" is ${today}
-5. frequency
-6. reminder_time  – HH:MM (default 12:00)
-7. note_title     – (note / update)
-8. note_body      – (note)
-9. note_append    – (note_update)
-10. person_name
-11. person_role
-
-### Few-shot example ###
-Input: "תוסיף לסלט גם גמבה"
-Output: {"entry_type":"note_update","note_title":"מתכון לסלט","note_append":"גמבה"}
-
-Return **only JSON** – no comments.
-🗣 כל הערכים בעברית.
-`.trim();
+  const prompt = `Analyze the following message in Hebrew and return a valid JSON with 10 fields:\n\nMessage: "${message}"\n\nReturn these keys:\n1. entry_type     – "task" / "note" / "note_update"\n2. task_name      – (task only)\n3. category\n4. due_date       – assume "היום" is ${today}\n5. frequency\n6. reminder_time  – HH:MM (default 12:00)\n7. note_title     – (note / update)\n8. note_body      – (note)\n9. note_append    – (note_update)\n10. person_name\n11. person_role\n\n### Few-shot example ###\nInput: "תוסיף לסלט גם גמבה"\nOutput: {"entry_type":"note_update","note_title":"מתכון לסלט","note_append":"גמבה"}\n\nReturn **only JSON** – no comments.\n🗣 כל הערכים בעברית.`.trim();
 
   try {
     const res = await openai.chat.completions.create({
@@ -100,7 +66,6 @@ Return **only JSON** – no comments.
     const text   = res.choices[0]?.message?.content||'{}';
     const parsed = JSON.parse(text.trim().replace(/^```(json)?|```$/g,''));
 
-    /* Normalizations */
     if (parsed.entry_type==='note' && !parsed.note_title && parsed.note_body)
       parsed.note_title = parsed.note_body.slice(0,40);
 
@@ -108,14 +73,13 @@ Return **only JSON** – no comments.
     if (dateFromText) parsed.due_date = dateFromText;
     parsed.reminder_time = extractTimeFromText(message);
 
-    /* Update memory (only non-null fields) */
     if (userId){
       const newMem = {
         ...(parsed.person_name && { name:parsed.person_name }),
         ...(parsed.person_role && { role:parsed.person_role }),
         ...(parsed.task_name   && {
-           tags:[parsed.task_name],
-           keywords:{ [parsed.task_name]:parsed.category }
+          tags:[parsed.task_name],
+          keywords:{ [parsed.task_name]:parsed.category }
         }),
         ...(parsed.category    && { topics:[parsed.category] })
       };
@@ -132,39 +96,17 @@ Return **only JSON** – no comments.
   }
 }
 
-/* ------------------------------------------------------------------ */
-/*                   USER MEMORY HELPERS                              */
-/* ------------------------------------------------------------------ */
-
-/** טוען זיכרון משתמש לפתרון שאלות */
 export async function loadUserMemory(userId){
   const doc = await db.collection('user_memory').doc(userId).get();
   return doc.exists ? doc.data() : {};
 }
 
-/**
- * עונה על שאלה → אם תואם פתק – מחזיר את גוף הפתק.
- */
 export async function answerUserQuestionWithGPT(question, memory, userId=null){
   const notes = Object.keys(memory.keywords || {})
                       .filter(k=>memory.keywords[k]==='note');
-  const notesBlock = notes.length ? notes.map(t=>`• ${t}`).join('\n')
-                                  : 'אין פתקים שנשמרו';
+  const notesBlock = notes.length ? notes.map(t=>`• ${t}`).join('\n') : 'אין פתקים שנשמרו';
 
-  const prompt = `
-המשתמש שואל: "${question}"
-
-פתקי המשתמש:
-${notesBlock}
-
-להלן מידע על מה שאתה יודע עליו:
-${JSON.stringify(memory,null,2)}
-
-ענה בעברית קצרה.
-🟡 אם השאלה תואמת כותרת פתק – החזר "[NOTE] <כותרת>"
-🟢 אם יש קובץ מתאים החזר "[FILE] <כותרת>"
-🔴 אחרת – החזר "לא מצאתי מידע מתאים".
-`.trim();
+  const prompt = `המשתמש שואל: "${question}"\n\nפתקי המשתמש:\n${notesBlock}\n\nלהלן מידע על מה שאתה יודע עליו:\n${JSON.stringify(memory,null,2)}\n\nענה בעברית קצרה.\n🟡 אם השאלה תואמת כותרת פתק – החזר "[NOTE] <כותרת>"\n🟢 אם יש קובץ מתאים החזר "[FILE] <כותרת>"\n🔴 אחרת – החזר "לא מצאתי מידע מתאים".`.trim();
 
   try{
     const res  = await openai.chat.completions.create({
@@ -173,6 +115,7 @@ ${JSON.stringify(memory,null,2)}
     });
 
     let reply = res.choices[0]?.message?.content || 'לא מצאתי מידע.';
+
     if (reply.startsWith('[NOTE]') && userId){
       const title = reply.replace('[NOTE]','').trim();
       const snap  = await db.collection('entries')
@@ -184,6 +127,19 @@ ${JSON.stringify(memory,null,2)}
         reply = `**${title}**\n${body}`;
       }
     }
+
+    if (reply.startsWith('[FILE]') && userId){
+      const title = reply.replace('[FILE]','').trim();
+      const snap  = await db.collection('entries')
+                            .where('user_id','==',userId)
+                            .where('title','==',title)
+                            .limit(1).get();
+      if (!snap.empty){
+        const { url } = snap.docs[0].data();
+        reply = `📎 ${title}\n${url}`;
+      }
+    }
+
     return reply;
   }catch(e){
     console.error('❌ שגיאה בתשובת GPT:', e.message||e);
@@ -191,27 +147,8 @@ ${JSON.stringify(memory,null,2)}
   }
 }
 
-if (reply.startsWith('[FILE]') && userId){
-  const title = reply.replace('[FILE]','').trim();
-  const snap  = await db.collection('entries')
-               .where('user_id','==',userId)
-               .where('title','==',title)
-               .limit(1).get();
-  if (!snap.empty){
-    const { url } = snap.docs[0].data();
-    reply = `📎 ${title}\n${url}`;
-  }
-}
-
-async function tagsFromCaption(caption){
-  const prompt = `
-כתוב רשימת תגיות (מילים בודדות) בעברית שמתארות את הביטוי:
-"${caption}"
-החזר JSON עם מפתח יחיד "tags" שמכיל מערך מילים.
-דוגמה:
-Input: "קבלה חשמל מאי 2025"
-Output: {"tags":["קבלה","חשמל","2025","מאי"]}
-`.trim();
+export async function tagsFromCaption(caption){
+  const prompt = `כתוב רשימת תגיות (מילים בודדות) בעברית שמתארות את הביטוי:\n"${caption}"\nהחזר JSON עם מפתח יחיד "tags" שמכיל מערך מילים.\nדוגמה:\nInput: "קבלה חשמל מאי 2025"\nOutput: {"tags":["קבלה","חשמל","2025","מאי"]}`.trim();
 
   try{
     const res = await openai.chat.completions.create({
@@ -227,11 +164,6 @@ Output: {"tags":["קבלה","חשמל","2025","מאי"]}
   }
 }
 
-
-
-/* ------------------------------------------------------------------ */
-/*                       FALLBACK OBJECT                              */
-/* ------------------------------------------------------------------ */
 function getEmptyResponse(){
   return {
     task_name:'',category:'',due_date:'',frequency:'',
