@@ -4,6 +4,7 @@ import { db } from './firebase.js';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import { analyzeMessageWithGPT, answerUserQuestionWithGPT, loadUserMemory } from './gpt.js';
+import { updateUserMemory } from './gpt.js';	
 
 dotenv.config();
 
@@ -147,9 +148,7 @@ app.post('/webhook', async (req, res) => {
   await db.collection('entries').doc(row.entry_id).set(row);
 
   // מוסיף כותרת לרשימת מילות-הזיכרון
-  await updateUserMemory(userId, {
-    keywords: { [row.title]: 'note' }
-  });
+ await updateUserMemory(userId, { ...(row.title && { keywords:{ [row.title]:'note' } }) });
 
   await sendWhatsappMessage(phone,
     `📝 הערה נשמרה!\nכותרת: ${row.title}`);
