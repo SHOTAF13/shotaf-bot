@@ -1,43 +1,35 @@
-// utils/normalize.js   (ESM)
+// normalize.js  (ESM מלא)
 
 import { db } from './firebase.js';
 
+const slugify = (s = '') =>
+  s.toLowerCase()
+   .trim()
+   .replace(/[^\p{L}\p{N}\s-]/gu, '')      // משאיר אותיות מכל שפה ומספרים
+   .replace(/\s+/g, '');
 
-
-// Helper
-const slugify = (str = '') =>
-  str
-    .toLowerCase()
-    .trim()
-    .normalize('NFKD')
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '');
-
-// -- קטגוריה --------------------------------------------------
 export async function ensureCategory(raw = 'כללי') {
   raw = raw.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, '');
-  const slug = slugify(raw) || 'general';
+  let slug = slugify(raw);
+  if (!slug) slug = 'general';             // שמים משהו ולא יוצרים null
 
-console.log('[ensureCategory] raw:', raw, 'slug:', slug);
-console.log('[ensurePerson] name:', name, 'slug:', slug);
+  // לוג לצורכי דיבוג
+  console.log('[ensureCategory] raw:', raw, '→ slug:', slug);
 
   const ref = db.collection('categories').doc(slug);
   const doc = await ref.get();
-  if (!doc.exists) {
-    await ref.set({ display: raw, emoji: '' });
-  }
-  return slug;                     // ← מחזיר ID
+  if (!doc.exists) await ref.set({ display: raw, emoji: '' });
+  return slug;
 }
 
-// -- אדם -------------------------------------------------------
 export async function ensurePerson(name, role) {
   if (!name) return null;
-
-  name = name.replace(/[^\p{L}\p{N}\s-]/gu, '') 
+  name = name.replace(/^["'\u201C\u201D]+|["'\u201C\u201D]+$/g, '');
   const slug = slugify(name);
 
-  if (!slug) return null;
+  console.log('[ensurePerson] name:', name, '→ slug:', slug);
 
+  if (!slug) return null;                  // אם נשאר ריק – פשוט מדלגים
   const ref = db.collection('persons').doc(slug);
   await ref.set({ name, role }, { merge: true });
   return slug;

@@ -64,7 +64,7 @@ async function checkReminders() {
 
   for (const doc of snapshot.docs) {
     const task = doc.data();
-    const chatId = `${task.phone_number}@c.us`;
+    const catId = task.categoryId || 'general';
 
     console.log("📋 בודק משימה:", task.task_id);
     console.log("📅 reminder_datetime:", task.reminder_datetime);
@@ -77,7 +77,8 @@ async function checkReminders() {
     const shouldSend = isTimeToSend(task.reminder_datetime);
 
     if (shouldSend) {
-    const cat = await db.collection('categories').doc(task.categoryId).get();
+    const catId  = task.categoryId || 'general';           // Fallback
+   const catDoc = await db.collection('categories').doc(catId).get();
     const { display = task.categoryId, emoji = '' } = cat.data() || {};
     const message = `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}  ליום ${task.due_date}`;
 
