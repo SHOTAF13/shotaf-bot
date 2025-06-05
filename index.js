@@ -4,7 +4,7 @@ import { db } from './firebase.js';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import { analyzeMessageWithGPT, answerUserQuestionWithGPT, loadUserMemory } from './gpt.js';
-import { updateUserMemory } from './gpt.js';	
+import { updateUserMemory } from './updateUserMemory.js';	
 
 dotenv.config();
 
