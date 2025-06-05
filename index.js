@@ -1,277 +1,246 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import { db } from './firebase.js';
-import dotenv from 'dotenv';
-import axios from 'axios';
-import { analyzeMessageWithGPT, answerUserQuestionWithGPT, loadUserMemory } from './gpt.js';
-import { updateUserMemory } from './updateUserMemory.js';	
+/* ------------------------------------------------------------------ */
+/*                             Imports                                */
+/* ------------------------------------------------------------------ */
+import express                    from 'express';
+import bodyParser                 from 'body-parser';
+import dotenv                     from 'dotenv';
+import axios                      from 'axios';
 
-dotenv.config();
-
-const app = express();
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: false }));
-
-const PORT = process.env.PORT || 10000;
+import { db }                     from './firebase.js';
+import {
+  analyzeMessageWithGPT,
+  answerUserQuestionWithGPT,
+  loadUserMemory
+}                                 from './gpt.js';
+import { updateUserMemory }       from './updateUserMemory.js';
 import { ensureCategory, ensurePerson } from './normalize.js';
 
+/* ------------------------------------------------------------------ */
+/*                        Global-level constants                      */
+/* ------------------------------------------------------------------ */
+dotenv.config();
+const PORT = process.env.PORT || 10000;
+const app  = express();
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended:false }));
+
+/** Map chatId → { idInstance, token } */
+const userMap = {};
+
+/* ------------------------------------------------------------------ */
+/*                       Helper / formatter fns                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @param {string} isoDate – full ISO string
+ * @returns {string}       – DD.MM format in he-IL or 'לא צוין'
+ */
 function formatDueDate(isoDate) {
   if (!isoDate) return 'לא צוין';
-  const date = new Date(isoDate);
-  return date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+  return new Date(isoDate).toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit' });
 }
 
+/**
+ * טקסט ידידותי לתזכורת (היום<7 ימים → יום+שעה, אחרת תאריך+שעה)
+ */
 function formatFriendlyReminder(isoDate) {
   if (!isoDate) return 'לא נקבעה';
-  const now = new Date(Date.now() + 3 * 60 * 60 * 1000); // זמן ישראל
-  const target = new Date(isoDate);
-  const diffInDays = (target - now) / (1000 * 60 * 60 * 24);
 
-  if (diffInDays <= 7) {
-    return target.toLocaleString('he-IL', {
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } else {
-    return target.toLocaleString('he-IL', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
+  const nowISR = new Date(Date.now()+3*60*60*1000);   // Asia/Jerusalem
+  const target = new Date(isoDate);
+  const diff   = (target-nowISR)/(1000*60*60*24);
+
+  return target.toLocaleString('he-IL',
+    diff<=7
+      ? { weekday:'long', hour:'2-digit', minute:'2-digit' }
+      : { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }
+  );
 }
 
+/**
+ * שולח הודעת WhatsApp למספר (לפי Green-API instance/token במפת המשתמשים)
+ */
 async function sendWhatsappMessage(phone, message) {
   const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-  const user = userMap[chatId];
+  const user   = userMap[chatId];
   if (!user) return;
 
   try {
     await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
-      chatId,
-      message
+      chatId, message
     });
-    console.log("📤 נשלחה הודעה ל־", chatId);
+    console.log('📤 נשלחה הודעה ל-', chatId);
   } catch (err) {
-    console.error("❌ שגיאה בשליחת הודעה:", err.response?.data || err.message);
+    console.error('❌ שגיאה בשליחת הודעה:', err.response?.data || err.message);
   }
 }
 
-const userMap = {};
-
-// טוען משתמשים מ־Firestore
+/* ------------------------------------------------------------------ */
+/*              Bootstrapping userMap from Firestore                  */
+/* ------------------------------------------------------------------ */
 (async () => {
   const snapshot = await db.collection('users').get();
   snapshot.forEach(doc => {
-    const data = doc.data();
-    if (data.phone && data.idInstance && data.token) {
-      const rawPhone = data.phone.trim().replace(/[^0-9]/g, '');
-    const cleanPhone = rawPhone.startsWith('0')
-    ? rawPhone.replace(/^0/, '972')
-    : rawPhone;
-      const chatId = `${cleanPhone}@c.us`;
-      userMap[chatId] = {
-        idInstance: data.idInstance,
-        token: data.token
-      };
-    }
+    const d   = doc.data();
+    if (!d.phone || !d.idInstance || !d.token) return;
+
+    const raw = d.phone.trim().replace(/[^0-9]/g,'');
+    const num = raw.startsWith('0') ? raw.replace(/^0/,'972') : raw;
+    userMap[`${num}@c.us`] = { idInstance:d.idInstance, token:d.token };
   });
-  console.log("📦 userMap keys:", Object.keys(userMap));
+  console.log('📦 userMap keys:', Object.keys(userMap));
 })();
 
-app.post('/webhook', async (req, res) => {
+/* ------------------------------------------------------------------ */
+/*                        Main webhook route                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Webhook from Green-API.  
+ * 1. אם זו שאלה (מסתיימת ב-?) – משיב מהזיכרון.  
+ * 2. אחרת:  
+ *    • note → יוצר/מעדכן פתק.  
+ *    • task → שומר משימה + תזכורת.  
+ *    • “מה יש לי השבוע?” → שולח סיכום שבוע.
+ */
+app.post('/webhook', async (req,res)=>{
   try {
-    const type = req.body.typeWebhook;
-    const sender = req.body.senderData?.sender;
-    const chatId = req.body.senderData?.chatId;
-    const message = req.body.messageData?.textMessageData?.textMessage || '';
+    /* ---------- sanity checks ---------- */
+    const { typeWebhook:type, senderData, messageData } = req.body;
+    const sender  = senderData?.sender;
+    const chatId  = senderData?.chatId;
+    const message = messageData?.textMessageData?.textMessage || '';
+    if (!type||!sender||!chatId || sender!==chatId || !message.trim()) return res.sendStatus(200);
+    if (!userMap[sender]) return res.sendStatus(200);
 
-    if (!type || !sender || !chatId) return res.sendStatus(200);
-    if (!Object.keys(userMap).includes(sender)) return res.sendStatus(200);
-    if (sender !== chatId || !message.trim()) return res.sendStatus(200);
-    console.log("🔍 sender:", sender);
-    console.log("🔍 chatId:", chatId);
-    console.log("🔍 userMap keys:", Object.keys(userMap));
+    /* ---------- basic vars ---------- */
+    const phone     = chatId.replace('@c.us','');
+    const userId    = 'usr_'+phone.slice(-6);
+    const isQuestion= message.trim().endsWith('?');
 
-
-    console.log("📨 הודעה מזוהה מ־", sender, ":", message);
-
-    const phone = chatId.replace('@c.us', '');
-    const isQuestion = message.trim().endsWith('?');
-    const userId = 'usr_' + phone.slice(-6);
-
+    /* ---------- 1. Q&A path ---------- */
     if (isQuestion) {
-      const userMemory = await loadUserMemory(userId);
-      const answer = await answerUserQuestionWithGPT(message, userMemory, userId);
+      const memory = await loadUserMemory(userId);
+      const answer = await answerUserQuestionWithGPT(message, memory, userId);
       await sendWhatsappMessage(phone, answer);
       return res.sendStatus(200);
     }
 
-    let row = {
-      task_id: 'tsk_' + Date.now(),
-      user_id: userId,
+    /* ---------- GPT analysis ---------- */
+    const gptData = await analyzeMessageWithGPT(message, userId);
+
+    /* ---------- 2. NOTE (new) ---------- */
+    if ((gptData.entry_type||'').trim().toLowerCase()==='note') {
+      const noteRow = {
+        entry_id  : 'ent_'+Date.now(),
+        user_id   : userId,
+        entry_type: 'note',
+        title     : gptData.note_title,
+        body      : gptData.note_body,
+        created_at: new Date().toISOString()
+      };
+      await db.collection('entries').doc(noteRow.entry_id).set(noteRow);
+      if (noteRow.title) await updateUserMemory(userId, { keywords:{ [noteRow.title ]:'note' } });
+      await sendWhatsappMessage(phone, `📝 הערה נשמרה!\nכותרת: ${noteRow.title}`);
+      return res.sendStatus(200);
+    }
+
+    /* ---------- 3. NOTE-UPDATE ---------- */
+    if ((gptData.entry_type||'').trim().toLowerCase()==='note_update') {
+      const snap = await db.collection('entries')
+        .where('user_id','==',userId)
+        .where('title'  ,'==',gptData.note_title)
+        .limit(1).get();
+
+      if (snap.empty){
+        await sendWhatsappMessage(phone, `לא מצאתי פתק בשם: ${gptData.note_title}`);
+        return res.sendStatus(200);
+      }
+      const ref  = snap.docs[0].ref;
+      const body = `${snap.docs[0].data().body}\n${gptData.note_append}`;
+      await ref.update({ body, updated_at:new Date().toISOString() });
+      await sendWhatsappMessage(phone,'✅ הפתק עודכן!');
+      return res.sendStatus(200);
+    }
+
+    /* ---------- 4. Weekly summary ---------- */
+    const weeklyRegex = /מה.*(יש|רשום).*(השבוע)/i;
+    if (weeklyRegex.test(message)) {
+      const today = new Date();
+      const until = new Date(today); until.setDate(today.getDate()+7);
+
+      const snap = await db.collection('tasks')
+        .where('user_id','==',userId)
+        .where('due_date','>=', today.toISOString().slice(0,10))
+        .where('due_date','<=', until.toISOString().slice(0,10))
+        .get();
+
+      if (snap.empty) {
+        await sendWhatsappMessage(phone,'אין משימות לשבוע הקרוב 🙌');
+        return res.sendStatus(200);
+      }
+
+      const list = snap.docs
+        .map(d=>d.data())
+        .sort((a,b)=>a.due_date.localeCompare(b.due_date))
+        .map(t=>`• ${t.due_date} – ${t.task_name}`)
+        .join('\n');
+
+      await sendWhatsappMessage(phone,`🗓️ השבוע:\n${list}`);
+      return res.sendStatus(200);
+    }
+
+    /* ---------- 5. TASK (default) ---------- */
+    const taskRow = {
+      task_id   : 'tsk_'+Date.now(),
+      user_id   : userId,
       phone_number: phone,
       original_text: message,
-      task_name: '',
-      category: '',
-      due_date: '',
-      reminder_datetime: '',
-      frequency: '',
-      was_sent: false,
-      created_at: new Date().toISOString(),
+      task_name : gptData.task_name,
+      category  : gptData.category,
+      categoryId: await ensureCategory(gptData.category),
+      personId  : await ensurePerson(gptData.person_name, gptData.person_role),
+      due_date  : gptData.due_date,
+      frequency : gptData.frequency,
+      reminder_datetime:'',
+      was_sent  : false,
+      created_at: new Date().toISOString()
     };
 
-    let gptData = {
-      task_name: '',
-      category: '',
-      due_date: '',
-      frequency: '',
-      reminder_time: '12:00'
-    };
-
-    try {
-     gptData = await analyzeMessageWithGPT(message, userId);
-
-     // ── ➊ NEW: טיפול בהערות ──────────────────────────────
-  if ((gptData.entry_type || '').trim().toLowerCase() === 'note') {
-    const row = {
-    entry_id: 'ent_' + Date.now(),
-    user_id:  userId,
-    entry_type: 'note',
-    title: gptData.note_title,
-    body:  gptData.note_body,
-    created_at: new Date().toISOString()
-  };
-
-  // שמירה באוסף entries (או notes, לפי מה שבחרת)
-  await db.collection('entries').doc(row.entry_id).set(row);
-  console.log('title debug:', gptData.note_title);   // בדיקה צריך להדפיס את שם הפתק"
-
-
-  // מוסיף כותרת לרשימת מילות-הזיכרון
- await updateUserMemory(userId, { ...(row.title && { keywords:{ [row.title]:'note' } }) });
-
-  await sendWhatsappMessage(phone,
-    `📝 הערה נשמרה!\nכותרת: ${row.title}`);
-
-  return res.sendStatus(200);      // ← יוצא מפונקציה! לא יורד לקוד ה-task
-  }
-     console.log("🤖 פלט GPT:", gptData);
-    } catch {
-      console.warn("⚠️ GPT נכשל – מחזיר ערכים ריקים");
+    /* חישוב reminder_datetime */
+    if (taskRow.due_date && /^\d{4}-\d{2}-\d{2}$/.test(taskRow.due_date)){
+      const [hRaw,mRaw] = (gptData.reminder_time||'12:00').split(':');
+      const pad = n=>n.toString().padStart(2,'0');
+      const tzDate = new Date();
+      tzDate.setFullYear(+taskRow.due_date.split('-')[0]);
+      tzDate.setMonth(+taskRow.due_date.split('-')[1]-1);
+      tzDate.setDate (+taskRow.due_date.split('-')[2]);
+      tzDate.setHours(+pad(hRaw)); tzDate.setMinutes(+pad(mRaw)); tzDate.setSeconds(0);
+      if (tzDate < new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Jerusalem'})))
+        tzDate.setDate(tzDate.getDate()+1);
+      taskRow.reminder_datetime = tzDate.toISOString();
     }
-    /* ------------- עדכון פתק קיים ------------- */
- if ((gptData.entry_type || '').trim().toLowerCase() === 'note_update') {
-  // 1. מוצאים את הפתק לפי user_id + title
-  const snap = await db.collection('entries')
-                       .where('user_id', '==', userId)
-                       .where('title',   '==', gptData.note_title)
-                       .limit(1).get();
 
-  if (snap.empty) {
-    await sendWhatsappMessage(phone, `לא מצאתי פתק בשם: ${gptData.note_title}`);
-    return res.sendStatus(200);
-  }
+    await db.collection('tasks').doc(taskRow.task_id).set(taskRow);
 
-  // 2. מעדכנים BODY + תאריך
-  const ref  = snap.docs[0].ref;
-  const old  = snap.docs[0].data().body || '';
-  const body = `${old}\n${gptData.note_append}`;
-  await ref.update({ body, updated_at: new Date().toISOString() });
-
-  await sendWhatsappMessage(phone, '✅ הפתק עודכן!');
-  return res.sendStatus(200);
-}
-
-
-    row.task_name = gptData.task_name;
-    row.categoryId = await ensureCategory(gptData.category);
-    row.category   = gptData.category;  
-    row.personId   = await ensurePerson(gptData.person_name, gptData.person_role);
-    row.due_date = gptData.due_date;
-    row.frequency = gptData.frequency;
-
-if (row.due_date && /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) {
-  const [hourRaw, minuteRaw] = (gptData.reminder_time || '12:00').split(':');
-  const pad = (n) => n.toString().padStart(2, '0');
-
-  const hour = pad(Number(hourRaw));
-  const minute = pad(Number(minuteRaw));
-
-  // יוצרים תאריך עם איזור זמן של ישראל
-  const localDateInIsrael = new Date();
-  localDateInIsrael.setFullYear(Number(row.due_date.split('-')[0]));
-  localDateInIsrael.setMonth(Number(row.due_date.split('-')[1]) - 1); // חודשים מ-0
-  localDateInIsrael.setDate(Number(row.due_date.split('-')[2]));
-  localDateInIsrael.setHours(Number(hour));
-  localDateInIsrael.setMinutes(Number(minute));
-  localDateInIsrael.setSeconds(0);
-  localDateInIsrael.setMilliseconds(0);
-
-
-  // שעת עכשיו לפי שעון ישראל
-  const nowIsrael = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-
-  // אם התזכורת מהעבר – דוחים ליום הבא
-  if (localDateInIsrael.getTime() < nowIsrael.getTime()) {
-    localDateInIsrael.setDate(localDateInIsrael.getDate() + 1);
-  }
-
-  // שומרים בפורמט UTC
-  row.reminder_datetime = new Date(localDateInIsrael).toISOString();
-}
-
-const weeklyRegex = /מה.*(יש|רשום).*(השבוע)/i;
-if (weeklyRegex.test(message)) {
-  const today   = new Date();
-  const until   = new Date(today); until.setDate(today.getDate() + 7);
-
-  const snap = await db.collection('tasks')
-    .where('user_id','==',userId)
-    .where('due_date','>=', today.toISOString().slice(0,10))
-    .where('due_date','<=', until.toISOString().slice(0,10))
-    .get();
-
-  if (snap.empty) {
-    await sendWhatsappMessage(phone, 'אין משימות לשבוע הקרוב 🙌');
-    return res.sendStatus(200);
-  }
-
-  // סידור כרונולוגי
-  const list = snap.docs
-      .map(d => d.data())
-      .sort((a,b) => a.due_date.localeCompare(b.due_date))
-      .map(t => `• ${t.due_date} – ${t.task_name}`)
-      .join('\n');
-
-  await sendWhatsappMessage(phone, `🗓️ השבוע:\n${list}`);
-  return res.sendStatus(200);
-}
-
-
-    await db.collection('tasks').doc(row.task_id).set(row);
-    console.log(`✅ משימה נשמרה ב־Firestore עבור ${row.phone_number}`);
-
-    const reply = `
+    const confirm = `
 💡 סגור! הוספתי את זה לרשימה שלך:
 
-📝 משימה: ${row.task_name || 'לא זוהתה'}
-📁 קטגוריה: ${row.category || 'כללי'}
-📅 יעד: ${formatDueDate(row.due_date)}
-🔁 תדירות: ${row.frequency || 'חד פעמי'}
-⏰ תזכורת: ${formatFriendlyReminder(row.reminder_datetime)}
+📝 משימה: ${taskRow.task_name||'לא זוהתה'}
+📁 קטגוריה: ${taskRow.category || 'כללי'}
+📅 יעד: ${formatDueDate(taskRow.due_date)}
+🔁 תדירות: ${taskRow.frequency || 'חד פעמי'}
+⏰ תזכורת: ${formatFriendlyReminder(taskRow.reminder_datetime)}
 `.trim();
-
-    await sendWhatsappMessage(phone, reply);
+    await sendWhatsappMessage(phone, confirm);
     res.sendStatus(200);
-  } catch (err) {
-    console.error('🔥 שגיאה כללית ב־/webhook:', err);
+
+  } catch(err){
+    console.error('🔥 שגיאה כללית ב-/webhook:', err);
     res.sendStatus(500);
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 שרת פעיל על פורט ${PORT}`);
-});
+/* ------------------------------------------------------------------ */
+app.listen(PORT, ()=>console.log(`🚀 שרת פעיל על פורט ${PORT}`));

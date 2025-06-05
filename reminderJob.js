@@ -1,86 +1,102 @@
-
-import { db } from './firebase.js';
-import axios from 'axios';
-import dotenv from 'dotenv';
+/* ------------------------------------------------------------------ */
+/*                               IMPORTS                              */
+/* ------------------------------------------------------------------ */
+import dotenv            from 'dotenv';
+import axios             from 'axios';
+import { db }            from './firebase.js';
+import OpenAI            from 'openai';
 
 dotenv.config();
 
+/* ------------------------------------------------------------------ */
+/*                            CONSTANTS                               */
+/* ------------------------------------------------------------------ */
+const openai = new OpenAI({ apiKey: process.env.KEY_GPT });
+const TZ_OFFSET_ISRAEL = 3 * 60 * 60 * 1000;   // +03:00 in ms
+const CHECK_INTERVAL   = 60 * 1000;            // 1 min
+
+/* ------------------------------------------------------------------ */
+/*                       HELPER / UTILITY FUNCS                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * טוען מ-Firestore את אוסף users ומחזיר Map {chatId → creds}
+ * @returns {Promise<Record<string,{idInstance:string,token:string}>>}
+ */
 async function loadUserMap() {
-  const userMap = {};
-  const snapshot = await db.collection('users').get();
+  const map = {};
+  const snap = await db.collection('users').get();
+  snap.forEach(doc => {
+    const d = doc.data();
+    if (!d.phone || !d.idInstance || !d.token) return;
 
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    if (data.phone && data.idInstance && data.token) {
-      const cleanPhone = data.phone.replace(/^0/, '972');
-      const chatId = `${cleanPhone}@c.us`;
-      userMap[chatId] = {
-        idInstance: data.idInstance,
-        token: data.token
-      };
-    }
+    const clean = d.phone.replace(/^0/, '972');
+    map[`${clean}@c.us`] = { idInstance:d.idInstance, token:d.token };
   });
-
-  console.log("✅ userMap loaded:", Object.keys(userMap));
-  return userMap;
+  console.log('✅ userMap loaded:', Object.keys(map));
+  return map;
 }
 
+/**
+ * שליחת הודעת WhatsApp לפי Green-API creds
+ */
 async function sendWhatsappMessage(chatId, message, userMap) {
   const user = userMap[chatId];
-  if (!user) {
-    console.warn("⚠️ אין מידע על המשתמש:", chatId);
-    return;
-  }
+  if (!user) return console.warn('⚠️ אין מידע על המשתמש:', chatId);
 
   try {
-    await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
-      chatId,
-      message
-    });
-    console.log("📤 הודעה נשלחה ל:", chatId);
+    await axios.post(
+      `https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`,
+      { chatId, message }
+    );
+    console.log('📤 הודעה נשלחה ל:', chatId);
   } catch (err) {
-    console.error("❌ שגיאה בשליחה:", err.response?.data || err.message);
+    console.error('❌ שגיאה בשליחה:', err.response?.data || err.message);
   }
 }
 
+/**
+ * @param {string} reminderDateTime – ISO string
+ * @returns {boolean} – האם עבר מועד התזכורת ביחס לזמן ישראל
+ */
 function isTimeToSend(reminderDateTime) {
-  const nowUTC = new Date();
-  const nowIsrael = new Date(nowUTC.getTime() + 3 * 60 * 60 * 1000); // +3 שעות ל־Asia/Jerusalem
-  const target = new Date(reminderDateTime);
-  return nowIsrael.getTime() >= target.getTime();
+  const nowISR = new Date(Date.now() + TZ_OFFSET_ISRAEL);
+  return nowISR >= new Date(reminderDateTime);
 }
 
+/* ------------------------------------------------------------------ */
+/*                       CORE – CHECK REMINDERS                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * שורק משימות פתוחות, משגר תזכורות ושם was_sent=true
+ */
 async function checkReminders() {
   const userMap = await loadUserMap();
 
-  const snapshot = await db.collection('tasks')
-    .where('was_sent', '==', false)
-    .get();
+  const snap = await db.collection('tasks')
+    .where('was_sent','==',false).get();
 
-  if (snapshot.empty) {
-    console.log("🔕 אין משימות לא מתוזכרות");
-    return;
-  }
+  if (snap.empty) return console.log('🔕 אין משימות לא מתוזכרות');
 
-  for (const doc of snapshot.docs) {
-    const task = doc.data();
+  for (const doc of snap.docs) {
+    const task   = doc.data();
     const chatId = `${task.phone_number}@c.us`;
-    const catId = task.categoryId || 'general';
-
-    console.log("📋 בודק משימה:", task.task_id);
-    console.log("📅 reminder_datetime:", task.reminder_datetime);
 
     if (!task.reminder_datetime) {
-      console.log("❌ reminder_datetime חסר במשימה:", task.task_id);
+      console.log('❌ reminder_datetime חסר:', task.task_id);
       continue;
-    } 
+    }
+    if (!isTimeToSend(task.reminder_datetime)) {
+      console.log('⏱ עדיין לא הזמן למשימה', task.task_id);
+      continue;
+    }
 
-    const shouldSend = isTimeToSend(task.reminder_datetime);
+    /* ---------- הכנה לטקסט תזכורת “חכם” ---------- */
+    const catId  = task.categoryId || 'general';
+    const catDoc = await db.collection('categories').doc(catId).get();
+    const { display = catId, emoji = '' } = catDoc.data() || {};
 
-    if (shouldSend) {
-    const catId  = task.categoryId || 'general';           // Fallback
-   const catDoc = await db.collection('categories').doc(catId).get();
-    const { display = catId,emoji = '' } = catDoc.data() || {};
     const gptPrompt = `
 המשימה: "${task.task_name}"
 הקטגוריה: "${display}"
@@ -89,20 +105,21 @@ async function checkReminders() {
 כתוב תזכורת קצרה ונעימה בעברית, כולל אימוג'י אחד מתאים.
 `.trim();
 
-const completion = await openai.chat.completions.create({
-  model: "gpt-4o-mini",
-  messages: [{ role:'user', content:gptPrompt }]
-});
-   const message = completion.choices[0]?.message?.content ||  `⏰ תזכורת: ${task.task_name} (${display})`;
+    const completion = await openai.chat.completions.create({
+      model   : 'gpt-4o-mini',
+      messages: [{ role:'user', content:gptPrompt }]
+    });
 
-      await sendWhatsappMessage(chatId, message, userMap);
-      await db.collection('tasks').doc(task.task_id).update({ was_sent: true });
-      console.log("✅ תזכורת נשלחה ועדכון was_sent=true");
-    } else {
-      console.log("⏱ עדיין לא הזמן לשלוח את התזכורת הזו");
-    }
+    const message = completion.choices[0]?.message?.content
+                 || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
+
+    await sendWhatsappMessage(chatId, message, userMap);
+    await doc.ref.update({ was_sent:true });
+    console.log('✅ תזכורת נשלחה →', task.task_id);
   }
 }
 
-// מריץ כל דקה
-setInterval(checkReminders, 60 * 1000);
+/* ------------------------------------------------------------------ */
+/*                         SCHEDULER (every 1 min)                    */
+/* ------------------------------------------------------------------ */
+setInterval(checkReminders, CHECK_INTERVAL);
