@@ -106,8 +106,10 @@ Return only valid JSON - no comments or explanations.
       const newMemory = {
         name: parsed.person_name,
         role: parsed.person_role,
-        tags: [parsed.task_name],
-        keywords: { [parsed.task_name]: parsed.category },
+       ...(parsed.task_name && {
+       tags: [parsed.task_name],
+       keywords: { [parsed.task_name]: parsed.category }
+     }),
         topics: [parsed.category]
       };
 
@@ -168,7 +170,7 @@ ${memorySummary}
       messages: [{ role: "user", content: prompt }],
     });
 
-    const reply = completion.choices[0]?.message?.content || 'לא מצאתי מידע.';
+    let reply = completion.choices[0]?.message?.content || 'לא מצאתי מידע.';
     // אם GPT מחזיר תווית פתק
 if (reply.startsWith('[NOTE]')) {
   const title = reply.replace('[NOTE]', '').trim();
