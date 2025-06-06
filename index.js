@@ -20,6 +20,10 @@ import { updateUserMemory }       from './updateUserMemory.js';
 import { ensureCategory, ensurePerson } from './normalize.js';
 dotenv.config();
 
+console.log('✅ ENV BOT_ID_INSTANCE:', process.env.BOT_ID_INSTANCE);
+console.log('✅ ENV BOT_TOKEN:', process.env.BOT_TOKEN);
+
+
 /* ------------------------------------------------------------------ */
 /*                        Global-level constants                      */
 /* ------------------------------------------------------------------ */
