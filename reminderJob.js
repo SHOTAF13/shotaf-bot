@@ -8,6 +8,7 @@ import OpenAI            from 'openai';
 
 dotenv.config();
 
+
 /* ------------------------------------------------------------------ */
 /*                            CONSTANTS                               */
 /* ------------------------------------------------------------------ */
@@ -28,17 +29,19 @@ const CHECK_INTERVAL   = 60 * 1000;            // 1 min
  * שליחת הודעת WhatsApp לפי Green-API creds
  */
 async function sendWhatsappMessage(chatId, message) {
+  const BASE_URL = `https://7105.api.greenapi.com`;
+
   try {
     await axios.post(
-      `https://api.green-api.com/waInstance${process.env.BOT_ID_INSTANCE}/sendMessage/${process.env.BOT_TOKEN}`,
+      `${BASE_URL}/waInstance${process.env.BOT_ID_INSTANCE}/sendMessage/${process.env.BOT_TOKEN}`,
       { chatId, message }
     );
-
     console.log('📤 הודעה נשלחה ל:', chatId);
   } catch (err) {
     console.error('❌ שגיאה בשליחה:', err.response?.data || err.message);
   }
 }
+
 
 /**
  * @param {string} reminderDateTime – ISO string
