@@ -30,9 +30,6 @@ const app  = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended:false }));
 
-console.log('📦 שולח לכתובת:', `https://api.green-api.com/waInstance${BOT_ID_INSTANCE}/sendMessage/${BOT_TOKEN}`);
-console.log('📱 chatId:', chatId, '📨 message:', message);
-
 /** סט של משתמשים מורשים 972xxxxxxxx  */
 const allowedUsers = new Set();
 const BOT_ID_INSTANCE = process.env.BOT_ID_INSTANCE;
@@ -126,6 +123,8 @@ const sender  = senderData?.sender;
 const chatId  = senderData?.chatId;
 const message = messageData?.textMessageData?.textMessage || '';
 
+console.log('📦 שולח לכתובת:', `https://api.green-api.com/waInstance${BOT_ID_INSTANCE}/sendMessage/${BOT_TOKEN}`);
+console.log('📱 chatId:', chatId, '📨 message:', message);
 
     if (!type||!sender||!chatId || sender!==chatId || !message.trim()) return res.sendStatus(200);
     const phoneDigits = sender.replace('@c.us','');
@@ -182,6 +181,7 @@ async function saveMediaToStorage(downloadUrl, mime, userId){
   });
   return { url, bucketPath, mime };
 }
+
 
 
   /* 3. זיכרון – מוסיף keyword */
