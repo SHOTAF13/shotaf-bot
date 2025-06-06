@@ -23,32 +23,17 @@ const CHECK_INTERVAL   = 60 * 1000;            // 1 min
  * טוען מ-Firestore את אוסף users ומחזיר Map {chatId → creds}
  * @returns {Promise<Record<string,{idInstance:string,token:string}>>}
  */
-async function loadUserMap() {
-  const map = {};
-  const snap = await db.collection('users').get();
-  snap.forEach(doc => {
-    const d = doc.data();
-    if (!d.phone || !d.idInstance || !d.token) return;
-
-    const clean = d.phone.replace(/^0/, '972');
-    map[`${clean}@c.us`] = { idInstance:d.idInstance, token:d.token };
-  });
-  console.log('✅ userMap loaded:', Object.keys(map));
-  return map;
-}
 
 /**
  * שליחת הודעת WhatsApp לפי Green-API creds
  */
-async function sendWhatsappMessage(chatId, message, userMap) {
-  const user = userMap[chatId];
-  if (!user) return console.warn('⚠️ אין מידע על המשתמש:', chatId);
-
+async function sendWhatsappMessage(chatId, message) {
   try {
     await axios.post(
-      `https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`,
+      `https://api.green-api.com/waInstance${process.env.BOT_ID_INSTANCE}/sendMessage/${process.env.BOT_TOKEN}`,
       { chatId, message }
     );
+
     console.log('📤 הודעה נשלחה ל:', chatId);
   } catch (err) {
     console.error('❌ שגיאה בשליחה:', err.response?.data || err.message);
@@ -79,7 +64,7 @@ function isTimeToSend(reminderDateTime) {
  *   • "חודשי"                 → reminder +1m (שומר על יום בחודש)
  */
 async function checkReminders() {
-  const userMap = await loadUserMap();
+
 
   const snap = await db.collection('tasks')
     .where('was_sent','==',false).get();
@@ -121,7 +106,7 @@ async function checkReminders() {
                  || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
 
     /* ---------- שליחה ---------- */
-    await sendWhatsappMessage(chatId, message, userMap);
+    await sendWhatsappMessage(chatId, message);
 
     /* ---------- גלגול קדימה / סימון נשלח ---------- */
     const updateData = {};

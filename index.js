@@ -5,6 +5,8 @@ import express                    from 'express';
 import bodyParser                 from 'body-parser';
 import dotenv                     from 'dotenv';
 import axios                      from 'axios';
+import { tagsFromCaption }  from './gpt.js';      
+import { Storage }          from '@google-cloud/storage'; 
 
 import { db }                     from './firebase.js';
 import fs                         from 'node:fs/promises';
@@ -20,6 +22,7 @@ import { ensureCategory, ensurePerson } from './normalize.js';
 /* ------------------------------------------------------------------ */
 /*                        Global-level constants                      */
 /* ------------------------------------------------------------------ */
+const storage = new Storage().bucket(process.env.GCLOUD_BUCKET);
 dotenv.config();
 const PORT = process.env.PORT || 10000;
 const app  = express();
@@ -27,8 +30,13 @@ const app  = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended:false }));
 
-/** Map chatId → { idInstance, token } */
-const userMap = {};
+/** סט של משתמשים מורשים 972xxxxxxxx  */
+const allowedUsers = new Set();
+const BOT_ID_INSTANCE = process.env.BOT_ID_INSTANCE;
+const BOT_TOKEN       = process.env.BOT_TOKEN;
+const BOT_PHONE_ID    = `${process.env.BOT_PHONE}@c.us`;   // 972…@c.us
+
+
 
 /* ------------------------------------------------------------------ */
 /*                       Helper / formatter fns                       */
@@ -69,12 +77,9 @@ if (process.env.DEBUG_MEDIA === '1') {
  */
 async function sendWhatsappMessage(phone, message) {
   const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-  const user   = userMap[chatId];
-  if (!user) return;
-
-  try {
-    await axios.post(`https://api.green-api.com/waInstance${user.idInstance}/sendMessage/${user.token}`, {
-      chatId, message
+     try {
+    await axios.post(`https://api.green-api.com/waInstance${BOT_ID_INSTANCE}/sendMessage/${BOT_TOKEN}`, {
+       chatId, message
     });
     console.log('📤 נשלחה הודעה ל-', chatId);
   } catch (err) {
@@ -85,17 +90,14 @@ async function sendWhatsappMessage(phone, message) {
 /* ------------------------------------------------------------------ */
 /*              Bootstrapping userMap from Firestore                  */
 /* ------------------------------------------------------------------ */
-(async () => {
-  const snapshot = await db.collection('users').get();
-  snapshot.forEach(doc => {
-    const d   = doc.data();
-    if (!d.phone || !d.idInstance || !d.token) return;
-
-    const raw = d.phone.trim().replace(/[^0-9]/g,'');
-    const num = raw.startsWith('0') ? raw.replace(/^0/,'972') : raw;
-    userMap[`${num}@c.us`] = { idInstance:d.idInstance, token:d.token };
+// טוען רשימת לקוחות מורשים בלבד
+(async ()=>{
+  const snap = await db.collection('users').get();
+  snap.forEach(doc=>{
+    const p = (doc.data().phone||'').replace(/^0/,'972');
+    if (p) allowedUsers.add(p);
   });
-  console.log('📦 userMap keys:', Object.keys(userMap));
+  console.log('🟢 allowed users:', Array.from(allowedUsers));
 })();
 
 
@@ -116,11 +118,15 @@ app.post('/webhook', async (req,res)=>{
   try {
     /* ---------- sanity checks ---------- */
     const { typeWebhook:type, senderData, messageData } = req.body;
-    const sender  = senderData?.sender;
-    const chatId  = senderData?.chatId;
-    const message = messageData?.textMessageData?.textMessage || '';
+
+const sender  = senderData?.sender;
+const chatId  = senderData?.chatId;
+const message = messageData?.textMessageData?.textMessage || '';
+
+
     if (!type||!sender||!chatId || sender!==chatId || !message.trim()) return res.sendStatus(200);
-    if (!userMap[sender]) return res.sendStatus(200);
+    const phoneDigits = sender.replace('@c.us','');
+    if (!allowedUsers.has(phoneDigits)) return res.sendStatus(200);
 
     /* ---------- A. Media message ---------- */
 const typeMsg  = req.body.messageData?.typeMessage;          // image / document / ...

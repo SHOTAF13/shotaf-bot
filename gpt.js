@@ -55,7 +55,7 @@ function extractTimeFromText(txt){
 export async function analyzeMessageWithGPT(message, userId=null){
   const today = new Date().toISOString().split('T')[0];
 
-  const prompt = `Analyze the following message in Hebrew and return a valid JSON with 10 fields:\n\nMessage: "${message}"\n\nReturn these keys:\n1. entry_type     – "task" / "note" / "note_update"\n2. task_name      – (task only)\n3. category\n4. due_date       – assume "היום" is ${today}\n5. frequency\n6. reminder_time  – HH:MM (default 12:00)\n7. note_title     – (note / update)\n8. note_body      – (note)\n9. note_append    – (note_update)\n10. person_name\n11. person_role\n\n### Few-shot example ###\nInput: "תוסיף לסלט גם גמבה"\nOutput: {"entry_type":"note_update","note_title":"מתכון לסלט","note_append":"גמבה"}\n\nReturn **only JSON** – no comments.\n🗣 כל הערכים בעברית.`.trim();
+  const prompt = `Analyze the following message in Hebrew and return a valid JSON with 11 fields:\n\nMessage: "${message}"\n\nReturn these keys:\n1. entry_type     – "task" / "note" / "note_update"\n2. task_name      – (task only)\n3. category\n4. due_date       – assume "היום" is ${today}\n5. frequency\n6. reminder_time  – HH:MM (default 12:00)\n7. note_title     – (note / update)\n8. note_body      – (note)\n9. note_append    – (note_update)\n10. person_name\n11. person_role\n\n### Few-shot example ###\nInput: "תוסיף לסלט גם גמבה"\nOutput: {"entry_type":"note_update","note_title":"מתכון לסלט","note_append":"גמבה"}\n\nReturn **only JSON** – no comments.\n🗣 כל הערכים בעברית.`.trim();
 
   try {
     const res = await openai.chat.completions.create({
