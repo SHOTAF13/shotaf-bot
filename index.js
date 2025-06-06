@@ -18,17 +18,20 @@ import {
 }                                 from './gpt.js';
 import { updateUserMemory }       from './updateUserMemory.js';
 import { ensureCategory, ensurePerson } from './normalize.js';
+dotenv.config();
 
 /* ------------------------------------------------------------------ */
 /*                        Global-level constants                      */
 /* ------------------------------------------------------------------ */
 const storage = new Storage().bucket(process.env.GCLOUD_BUCKET);
-dotenv.config();
 const PORT = process.env.PORT || 10000;
 const app  = express();
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended:false }));
+
+console.log('📦 שולח לכתובת:', `https://api.green-api.com/waInstance${BOT_ID_INSTANCE}/sendMessage/${BOT_TOKEN}`);
+console.log('📱 chatId:', chatId, '📨 message:', message);
 
 /** סט של משתמשים מורשים 972xxxxxxxx  */
 const allowedUsers = new Set();
