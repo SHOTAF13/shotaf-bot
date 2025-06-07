@@ -50,10 +50,11 @@ function extractTimeFromText(txt){
 }
 
 function parseFrequency(txt){
-  if (/כל יום/i.test(txt))           return 'יומי';
-  if (/פעמיים בשבוע|כל.*שבוע/i.test(txt)) return 'שבועי';
-  if (/כל חודש|חודשי/i.test(txt))     return 'חודשי';
-  return '';
+   if (/כל יום/i.test(txt))                     return 'יומי';
+   if (/פעמיים בשבוע|כל.*שבוע/i.test(txt))     return 'שבועי';
+   if (/כל יום (ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/i.test(txt)) return 'שבועי';
+   if (/כל חודש|חודשי/i.test(txt))             return 'חודשי';
+   return '';
 }
 
 
@@ -63,8 +64,7 @@ function parseFrequency(txt){
 export async function analyzeMessageWithGPT(message, userId=null){
   const today = new Date().toISOString().split('T')[0];
 
-  const prompt = ` אתה עוזר אישי דיגיטלי אבל שותף מלא של הבן אדם שמדבר איתך 
-  אתה מבין מי הבן אדם איך הוא מדבר מה הוא רוצה להיות ומדבר איתו כמו החבר הכי טוב שלו לפי מה שהוא  .
+  const prompt = ` אתה עוזר אישי דיגיטלי אבל שותף מלא של הבן אדם שמדבר איתך  .
 קבל משפט בעברית ↔ החזר JSON עם השדות הבאים (עברית בלבד):
 
 • entry_type  - "task"‎ / ‎"note"‎
@@ -95,12 +95,18 @@ Output: {"entry_type":"task","task_name":"להשקות עציצים","frequency"
 Input: "שיר חדש שמעתי ברדיו"
 Output: {"entry_type":"note","note_title":"שיר חדש","note_body":"שמעתי ברדיו"}
 
++Input: "מתכון לסלט גזר – גזר, מלפפון וגמבה"
++Output: {"entry_type":"note","note_title":"מתכון לסלט גזר","note_body":"גזר, מלפפון וגמבה"}
++
++Input: "צריך להתקשר לאלון ביום שלישי"
++Output: {"entry_type":"task","task_name":"להתקשר לאלון","due_date":"${today}"}
+
 
 החזר JSON נקי בלבד.`.trim();
 
   try {
     const res = await openai.chat.completions.create({
-      model:'gpt-4.1-nano-2025-04-14',
+      model:'gpt-4o-mini',
       messages:[{role:'user',content:prompt}]
     });
 
@@ -130,12 +136,15 @@ Output: {"entry_type":"note","note_title":"שיר חדש","note_body":"שמעת�
         await updateUserMemory(userId, newMem);
       }
     }
-    // fallback – verb in infinitive/imperative = task
-    const imperative = /^(צריך|התקשר|להתקשר|קבע|לקבוע|שלח|לשלוח|כתוב|לכתוב)/;
-    if (!parsed.entry_type && imperative.test(message)) {
-    parsed.entry_type = 'task';
-    parsed.task_name  ||= message.replace(imperative,'').trim();
-}
+      // ── Fallbackים ───────────────────────────────────────────
+      const imperative = /^(צריך|התקשר|להתקשר|קבע|לקבוע|שלח|לשלוח|כתוב|לכתוב)/;
+      if (
+        (!parsed.entry_type && imperative.test(message)) ||      // לא זיהה בכלל
+        (parsed.entry_type==='task' && !parsed.task_name)         // זיהה but ריק
+      ){
+      parsed.entry_type = 'task';
+      parsed.task_name  ||= message.replace(imperative,'').trim();
+      }
 
     return parsed;
 

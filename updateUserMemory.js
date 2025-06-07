@@ -107,10 +107,10 @@ export async function learnFromMessage(uid, gpt) {
   const memSnap = await ref.get();
   const mem = memSnap.exists ? memSnap.data() : {};
 
-  // 👥 שמירת אנשי קשר
-  if (gpt.person_name) {
+  // 👥 אנשי קשר  (שם → תפקיד)
+  if (gpt.person_name){
     mem.contacts ||= {};
-    mem.contacts[gpt.person_name] ||= gpt.person_role || '';
+    mem.contacts[gpt.person_name] = gpt.person_role || mem.contacts[gpt.person_name] || '';
   }
 
   // 🗝️ שמירת מילות מפתח
