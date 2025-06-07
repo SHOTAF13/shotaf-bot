@@ -381,7 +381,7 @@ if (match && match[1]) {
       phone_number: phone,
       original_text: message,
       task_name : gptData.task_name,
-      category  : gptData.category,
+      category  : gptData.category || 'כללי',
       categoryId: await ensureCategory(gptData.category),
       personId  : await ensurePerson(gptData.person_name, gptData.person_role),
       due_date  : gptData.due_date,
