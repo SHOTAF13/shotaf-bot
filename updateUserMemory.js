@@ -67,6 +67,7 @@ export async function learnFromMessage(uid, gpt){
   const ref = db.collection('user_memory').doc(uid);
   const memSnap = await ref.get();
   const mem = memSnap.exists ? memSnap.data() : {};
+  await ref.set(mem);
 
   /* ── contacts ── */
   if (gpt.person_name){
@@ -103,4 +104,4 @@ export async function learnFromMessage(uid, gpt){
   }
 }
 
-  await ref.set(mem);
+  
