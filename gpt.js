@@ -111,7 +111,13 @@ Output: {"entry_type":"note","note_title":"שיר חדש","note_body":"שמעת�
     });
 
     const text   = res.choices[0]?.message?.content||'{}';
-    const parsed = JSON.parse(text.trim().replace(/^```(json)?|```$/g,''));
+    let clean = text.trim()
+               .replace(/^```(json)?|```$/g,'')   // מסיר ```json
+               .match(/\{[\s\S]*\}/);             // חוטף את ה-{…}
+    clean = clean ? clean[0] : '{}';
+    let parsed = {};
+    try { parsed = JSON.parse(clean); }
+    catch(e){ console.error('⚠️ GPT raw:', text); throw e; }
 
     parsed.frequency ||= parseFrequency(message);
     if (parsed.entry_type==='note' && !parsed.note_title && parsed.note_body)
@@ -127,7 +133,7 @@ Output: {"entry_type":"note","note_title":"שיר חדש","note_body":"שמעת�
         ...(parsed.person_role && { role:parsed.person_role }),
         ...(parsed.task_name   && {
           tags:[parsed.task_name],
-          keywords:{ [parsed.task_name]:parsed.category }
+          keywords:{ [parsed.task_name]:parsed.category || 'כללי' }
         }),
         ...(parsed.category    && { topics:[parsed.category] })
       };

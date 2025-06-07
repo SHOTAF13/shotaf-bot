@@ -29,7 +29,11 @@ export async function answerUserQuestionWithGPT(userId, newInfo = {}) {
       last_used: ''
     };
 
-    memoryData.memory.names[newInfo.name] = {
+     memoryData.memory.contacts ||= {};
+    memoryData.memory.contacts[newInfo.name] = {
+     role: newInfo.role || existing.role,
+   
+ 
       role: newInfo.role || existing.role,
       mentions: existing.mentions + 1,
       tags: Array.from(new Set([...(existing.tags || []), ...(newInfo.tags || [])])),
