@@ -16,7 +16,7 @@ import {
   answerUserQuestionWithGPT,
   loadUserMemory
 }                                 from './gpt.js';
-import { updateUserMemory }       from './updateUserMemory.js';
+import { updateUserMemory, learnFromMessage } from './updateUserMemory.js';
 import { ensureCategory, ensurePerson } from './normalize.js';
 dotenv.config();
 
@@ -54,6 +54,25 @@ function formatDueDate(isoDate) {
   if (!isoDate) return 'לא צוין';
   return new Date(isoDate).toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit' });
 }
+async function getPersonSummary(userId, personName){
+  const mem  = await loadUserMemory(userId);
+  const role = mem.contacts?.[personName] || '';
+  const snap = await db.collection('tasks')
+       .where('user_id','==',userId)
+       .where('task_name','>=',`לה${''}`)   // לקריאה יעילה
+       .get();
+
+  const relevant = snap.docs
+    .map(d=>d.data())
+    .filter(t=>t.task_name.includes(personName));
+
+  const tasksTxt = relevant.length
+        ? relevant.map(t=>`• ${t.task_name} – ${t.due_date || 'ללא תאריך'}`).join('\n')
+        : 'אין משימות פתוחות';
+
+  return `${personName} ${role?`– ${role}`:''}\n${tasksTxt}`;
+}
+
 
 /**
  * טקסט ידידותי לתזכורת (היום<7 ימים → יום+שעה, אחרת תאריך+שעה)
@@ -142,6 +161,23 @@ if (!message.trim()) return res.sendStatus(200);
 const phoneDigits = chatId.replace('@c.us','');   // chatId==sender בצ'אט פרטי
 if (!allowedUsers.has(phoneDigits)) return res.sendStatus(200);
 
+const memory = await loadUserMemory('usr_'+phoneDigits.slice(-6));
+
+// אם יש הצעה בהמתנה והמשתמש עונה
+if (memory.__pendingSuggest && /^(כן|לא)$/i.test(message.trim())){
+  if (/כן/i.test(message)){
+    memory.habits ||= {};
+    const {tag,freq,time} = memory.__pendingSuggest;
+    memory.habits[tag] = {freq,time};
+    await sendWhatsappMessage(phoneDigits,
+      `מעולה! "${tag}" נוסף להרגלים הקבועים ✨`);
+  }
+  delete memory.__pendingSuggest;
+  await db.collection('user_memory').doc('usr_'+phoneDigits.slice(-6)).set(memory);
+  return res.sendStatus(200);
+}
+
+
 /* ------- (אפשר להשאיר כאן console.log לצורכי בדיקה) ------- */
 console.log('💬 Got msg from', phoneDigits, ':', message);
 
@@ -215,12 +251,24 @@ async function saveMediaToStorage(downloadUrl, mime, userId){
     const userId    = 'usr_'+phone.slice(-6);
     const isQuestion= message.trim().endsWith('?');
 
+    // שאלות אישיות?
+const whoRegex = /^מי זה\s+(.+?)\?*$/;
+const whatRegex = /^מה יש לי (?:עם|לגבי)\s+(.+?)\?*$/;
+let m;
+if ((m = message.match(whoRegex)) || (m = message.match(whatRegex))){
+  const name = m[1].trim();
+  const summary = await getPersonSummary(userId, name);
+  await sendWhatsappMessage(phone, summary);
+  return res.sendStatus(200);
+}
+
+
     /* ---------- 1. Q&A path ---------- */
     if (isQuestion) {
       const memory = await loadUserMemory(userId);
       const answer = await answerUserQuestionWithGPT(message, memory, userId);
       await sendWhatsappMessage(phone, answer);
-      return res.sendStatus(200);
+      return res.sendStatus(200); 
     }
 
     /* ---------- GPT analysis ---------- */
@@ -303,7 +351,7 @@ if (receiptsRegex.test(message)) {
   return res.sendStatus(200);
 }
 
-const allFilesRegex = /כל\s+(.+?)\s*$/;   // לדוגמה: "כל הקבלות", "כל המתכונים"
+const allFilesRegex = /כל\s+(הקבלות|הקבצים|המתכונים)\s*$/;  // לדוגמה: "כל הקבלות", "כל המתכונים"
 const match = message.match(allFilesRegex);
 
 if (match && match[1]) {
@@ -368,8 +416,10 @@ if (match && match[1]) {
 🔁 תדירות: ${taskRow.frequency || 'חד פעמי'}
 ⏰ תזכורת: ${formatFriendlyReminder(taskRow.reminder_datetime)}
 `.trim();
-    await sendWhatsappMessage(phone, confirm);
-    res.sendStatus(200);
+ await learnFromMessage(userId, gptData);   // ← חדש
+ await sendWhatsappMessage(phone, confirm);
+ res.sendStatus(200);
+
 
   } catch(err){
     console.error('🔥 שגיאה כללית ב-/webhook:', err);

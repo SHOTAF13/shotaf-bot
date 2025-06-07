@@ -4,6 +4,7 @@
 import dotenv            from 'dotenv';
 import axios             from 'axios';
 import { db }            from './firebase.js';
+import { loadUserMemory } from './gpt.js';
 import OpenAI            from 'openai';
 
 dotenv.config();
@@ -52,6 +53,15 @@ function isTimeToSend(reminderDateTime) {
   return nowISR >= new Date(reminderDateTime);
 }
 
+function personalize(msg, mem){
+  switch (mem?.profile?.tone){
+    case 'דוחף': return msg + '\nיאללה, קפוץ על זה!';
+    case 'חברי': return msg.replace('⏰','🤗');
+    default:     return msg;
+  }
+}
+
+
 /* ------------------------------------------------------------------ */
 /*                       CORE – CHECK REMINDERS                       */
 /* ------------------------------------------------------------------ */
@@ -86,7 +96,15 @@ async function checkReminders() {
       console.log('⏱ עדיין לא הזמן למשימה', task.task_id);
       continue;
     }
+/* ---------- נסה קודם הרגל קבוע ---------- */
+const mem = await loadUserMemory(task.user_id);
+const habit = mem?.habits?.[task.task_name];
 
+let message;
+if (habit){
+  message = `⏰ תזכורת (${habit.freq}): ${task.task_name}`;
+}
+else{
     /* ---------- בניית הודעה חכמה באמצעות GPT ---------- */
     const catId  = task.categoryId || 'general';
     const catDoc = await db.collection('categories').doc(catId).get();
@@ -105,11 +123,13 @@ async function checkReminders() {
       messages: [{ role:'user', content:gptPrompt }]
     });
 
-    const message = completion.choices[0]?.message?.content
-                 || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
+    message = completion.choices[0]?.message?.content
+                || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
+
 
     /* ---------- שליחה ---------- */
-    await sendWhatsappMessage(chatId, message);
+  const personalized = personalize(message, mem);
+  await sendWhatsappMessage(chatId, personalized);
 
     /* ---------- גלגול קדימה / סימון נשלח ---------- */
     const updateData = {};
@@ -142,6 +162,7 @@ async function checkReminders() {
 
     await doc.ref.update(updateData);
     console.log('✅ תזכורת נשלחה →', task.task_id);
+    }
   }
 }
 

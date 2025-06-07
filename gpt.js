@@ -49,13 +49,54 @@ function extractTimeFromText(txt){
   return '12:00';
 }
 
+function parseFrequency(txt){
+  if (/כל יום/i.test(txt))           return 'יומי';
+  if (/פעמיים בשבוע|כל.*שבוע/i.test(txt)) return 'שבועי';
+  if (/כל חודש|חודשי/i.test(txt))     return 'חודשי';
+  return '';
+}
+
+
 /* ------------------------------------------------------------------ */
 /*                        GPT ANALYSIS                                */
 /* ------------------------------------------------------------------ */
 export async function analyzeMessageWithGPT(message, userId=null){
   const today = new Date().toISOString().split('T')[0];
 
-  const prompt = `Analyze the following message in Hebrew and return a valid JSON with 11 fields:\n\nMessage: "${message}"\n\nReturn these keys:\n1. entry_type     – "task" / "note" / "note_update"\n2. task_name      – (task only)\n3. category\n4. due_date       – assume "היום" is ${today}\n5. frequency\n6. reminder_time  – HH:MM (default 12:00)\n7. note_title     – (note / update)\n8. note_body      – (note)\n9. note_append    – (note_update)\n10. person_name\n11. person_role\n\n### Few-shot example ###\nInput: "תוסיף לסלט גם גמבה"\nOutput: {"entry_type":"note_update","note_title":"מתכון לסלט","note_append":"גמבה"}\n\nReturn **only JSON** – no comments.\n🗣 כל הערכים בעברית.`.trim();
+  const prompt = ` אתה עוזר אישי דיגיטלי אבל שותף מלא של הבן אדם שמדבר איתך 
+  אתה מבין מי הבן אדם איך הוא מדבר מה הוא רוצה להיות ומדבר איתו כמו החבר הכי טוב שלו לפי מה שהוא  .
+קבל משפט בעברית ↔ החזר JSON עם השדות הבאים (עברית בלבד):
+
+• entry_type  - "task"‎ / ‎"note"‎
+  ▸ "task"  = משפט שמתחיל ב"צריך/לה…/קבע/שלח" או כולל יום/שעה/תדירות
+  ▸ "note"  = רעיון / זיכרון / תובנה ללא צורך בביצוע
+אל תשתמש במילה "חשוב" או "דחוף" לקביעת הסוג.
+
+• task_name      - שם פעולה (אם entry_type=task)
+• category       - קטגוריה בקצרה
+• due_date       - YYYY-MM-DD (אם אין תאריך → "")
+• frequency      - ‎"" / "יומי" / "שבועי" / "חודשי" / "פעם בשבוע" …
+• reminder_time  - HH:MM או ‎"" (אם אין שעה ברורה)
+• note_title     - אם פתק
+• note_body      - גוף הפתק
+• person_name    - אם מופיע שם
+• person_role    - תפקיד של אותו אדם
+
+❗ דוגמאות:
+Input: "להשקות את העציצים פעם בשבוע"
+Output: {"entry_type":"task","task_name":"להשקות את העציצים","category":"בית","frequency":"שבועי"}
+
+Input: "רעיון: להקים פודקאסט על יין"
+Output: {"entry_type":"note","note_title":"רעיון לפודקאסט","note_body":"להקים פודקאסט על יין"}
+
+Input: "צריך כל יום ראשון להשקות עציצים"
+Output: {"entry_type":"task","task_name":"להשקות עציצים","frequency":"שבועי"}
+
+Input: "שיר חדש שמעתי ברדיו"
+Output: {"entry_type":"note","note_title":"שיר חדש","note_body":"שמעתי ברדיו"}
+
+
+החזר JSON נקי בלבד.`.trim();
 
   try {
     const res = await openai.chat.completions.create({
@@ -66,6 +107,7 @@ export async function analyzeMessageWithGPT(message, userId=null){
     const text   = res.choices[0]?.message?.content||'{}';
     const parsed = JSON.parse(text.trim().replace(/^```(json)?|```$/g,''));
 
+    parsed.frequency ||= parseFrequency(message);
     if (parsed.entry_type==='note' && !parsed.note_title && parsed.note_body)
       parsed.note_title = parsed.note_body.slice(0,40);
 
@@ -88,12 +130,20 @@ export async function analyzeMessageWithGPT(message, userId=null){
         await updateUserMemory(userId, newMem);
       }
     }
+    // fallback – verb in infinitive/imperative = task
+    const imperative = /^(צריך|התקשר|להתקשר|קבע|לקבוע|שלח|לשלוח|כתוב|לכתוב)/;
+    if (!parsed.entry_type && imperative.test(message)) {
+    parsed.entry_type = 'task';
+    parsed.task_name  ||= message.replace(imperative,'').trim();
+}
+
     return parsed;
 
   } catch(e){
     console.error('❌ Failed to parse GPT response:', e.message||e);
     return getEmptyResponse();
   }
+
 }
 
 export async function loadUserMemory(userId){
