@@ -71,9 +71,7 @@ function formatFriendlyReminder(isoDate) {
       : { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }
   );
 }
-if (process.env.DEBUG_MEDIA === '1') {
-  console.dir(req.body, { depth: 4 });
-}
+
 
 
 /**
@@ -130,8 +128,24 @@ const message = messageData?.textMessageData?.textMessage || '';
 console.log('📦 שולח לכתובת:', `https://api.green-api.com/waInstance${BOT_ID_INSTANCE}/sendMessage/${BOT_TOKEN}`);
 console.log('📱 chatId:', chatId, '📨 message:', message);
 
-    if (!type||!sender||!chatId || sender!==chatId || !message.trim()) return res.sendStatus(200);
-    const phoneDigits = sender.replace('@c.us','');
+/* --------------- HARD FILTERS --------------- */
+// 1. חייב להיות טייפ הודעה נכנסת (לא state / outgoing / history)
+if (type !== 'incomingMessageReceived') return res.sendStatus(200);
+
+// 2. טפל רק בצ'אטים פרטיים (‎@c.us). כל ‎@g.us, ‎@broadcast → החוצה
+if (!chatId?.endsWith('@c.us')) return res.sendStatus(200);
+
+// 3. חובה שתהיה הודעת טקסט אמיתית
+if (!message.trim()) return res.sendStatus(200);
+
+// 4. המשתמש חייב להופיע ב-Firestore
+const phoneDigits = chatId.replace('@c.us','');   // chatId==sender בצ'אט פרטי
+if (!allowedUsers.has(phoneDigits)) return res.sendStatus(200);
+
+/* ------- (אפשר להשאיר כאן console.log לצורכי בדיקה) ------- */
+console.log('💬 Got msg from', phoneDigits, ':', message);
+
+
     if (!allowedUsers.has(phoneDigits)) return res.sendStatus(200);
 
     /* ---------- A. Media message ---------- */
@@ -197,7 +211,7 @@ async function saveMediaToStorage(downloadUrl, mime, userId){
 
 
     /* ---------- basic vars ---------- */
-    const phone     = chatId.replace('@c.us','');
+    const phone     = phoneDigits;  
     const userId    = 'usr_'+phone.slice(-6);
     const isQuestion= message.trim().endsWith('?');
 
