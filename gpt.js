@@ -21,6 +21,31 @@ const daysMap = {
 };
 
 /* ------------------------------------------------------------------ */
+/*                            FUNCTION SCHEMA                         */
+/* ------------------------------------------------------------------ */
+const analyzeSchema = {
+  name: 'analyze_message',
+  description: 'סיווג הודעה מהמשתמש לשותף האישי',
+  parameters: {
+    type: 'object',
+    properties: {
+      entry_type:    { enum:['task','note'], description:'task=משימה, note=פתק' },
+      task_name:     { type:'string',  description:'שם המשימה (אם task)' },
+      category:      { type:'string' },
+      due_date:      { type:'string',  description:'YYYY-MM-DD או ריק' },
+      frequency:     { type:'string' },
+      reminder_time: { type:'string' },
+      note_title:    { type:'string' },
+      note_body:     { type:'string' },
+      person_name:   { type:'string' },
+      person_role:   { type:'string' }
+    },
+    required: ['entry_type']
+  }
+};
+
+
+/* ------------------------------------------------------------------ */
 /*                     DATE / TIME HELPERS                            */
 /* ------------------------------------------------------------------ */
 function parseHebrewDate(txt){
@@ -59,107 +84,56 @@ function parseFrequency(txt){
 
 
 /* ------------------------------------------------------------------ */
-/*                        GPT ANALYSIS                                */
+/*                        GPT ANALYSIS (v2)                           */
 /* ------------------------------------------------------------------ */
-export async function analyzeMessageWithGPT(message, userId=null){
-  const today = new Date().toISOString().split('T')[0];
-
-  const prompt = ` אתה עוזר אישי דיגיטלי אבל שותף מלא של הבן אדם שמדבר איתך  .
-קבל משפט בעברית ↔ החזר JSON עם השדות הבאים (עברית בלבד):
-
-• entry_type  - "task"‎ / ‎"note"‎
-  ▸ "task"  = משפט שמתחיל ב"צריך/לה…/קבע/שלח" או כולל יום/שעה/תדירות
-  ▸ "note"  = רעיון / זיכרון / תובנה ללא צורך בביצוע
-אל תשתמש במילה "חשוב" או "דחוף" לקביעת הסוג.
-
-• task_name      - שם פעולה (אם entry_type=task)
-• category       - קטגוריה בקצרה
-• due_date       - YYYY-MM-DD (אם אין תאריך → "")
-• frequency      - ‎"" / "יומי" / "שבועי" / "חודשי" / "פעם בשבוע" …
-• reminder_time  - HH:MM או ‎"" (אם אין שעה ברורה)
-• note_title     - אם פתק
-• note_body      - גוף הפתק
-• person_name    - אם מופיע שם
-• person_role    - תפקיד של אותו אדם
-
-❗ דוגמאות:
-Input: "להשקות את העציצים פעם בשבוע"
-Output: {"entry_type":"task","task_name":"להשקות את העציצים","category":"בית","frequency":"שבועי"}
-
-Input: "רעיון: להקים פודקאסט על יין"
-Output: {"entry_type":"note","note_title":"רעיון לפודקאסט","note_body":"להקים פודקאסט על יין"}
-
-Input: "צריך כל יום ראשון להשקות עציצים"
-Output: {"entry_type":"task","task_name":"להשקות עציצים","frequency":"שבועי"}
-
-Input: "שיר חדש שמעתי ברדיו"
-Output: {"entry_type":"note","note_title":"שיר חדש","note_body":"שמעתי ברדיו"}
-
-+Input: "מתכון לסלט גזר – גזר, מלפפון וגמבה"
-+Output: {"entry_type":"note","note_title":"מתכון לסלט גזר","note_body":"גזר, מלפפון וגמבה"}
-+
-+Input: "צריך להתקשר לאלון ביום שלישי"
-+Output: {"entry_type":"task","task_name":"להתקשר לאלון","due_date":"${today}"}
-
-
-החזר JSON נקי בלבד.`.trim();
-
+export async function analyzeMessageWithGPT(message, userId = null) {
+  // 2.1 - קריאה ל-GPT עם function-calling
+  let gptData;
   try {
-    const res = await openai.chat.completions.create({
-      model:'gpt-4o-mini',
-      messages:[{role:'user',content:prompt}]
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'אתה עוזר אישי דיגיטלי. בחר רק task או note.' },
+        { role: 'user',   content: message }
+      ],
+      functions : [ analyzeSchema ],
+      function_call: { name: 'analyze_message' }
     });
 
-    const text   = res.choices[0]?.message?.content||'{}';
-    let clean = text.trim()
-               .replace(/^```(json)?|```$/g,'')   // מסיר ```json
-               .match(/\{[\s\S]*\}/);             // חוטף את ה-{…}
-    clean = clean ? clean[0] : '{}';
-    let parsed = {};
-    try { parsed = JSON.parse(clean); }
-    catch(e){ console.error('⚠️ GPT raw:', text); throw e; }
-
-    parsed.frequency ||= parseFrequency(message);
-    if (parsed.entry_type==='note' && !parsed.note_title && parsed.note_body)
-      parsed.note_title = parsed.note_body.slice(0,40);
-
-    const dateFromText = parseHebrewDate(message);
-    if (dateFromText) parsed.due_date = dateFromText;
-    parsed.reminder_time = extractTimeFromText(message);
-
-    if (userId){
-      const newMem = {
-        ...(parsed.person_name && { name:parsed.person_name }),
-        ...(parsed.person_role && { role:parsed.person_role }),
-        ...(parsed.task_name   && {
-          tags:[parsed.task_name],
-          keywords:{ [parsed.task_name]:parsed.category || 'כללי' }
-        }),
-        ...(parsed.category    && { topics:[parsed.category] })
-      };
-      if (Object.keys(newMem).length){
-        console.log('🧠 Updating user memory with:', newMem);
-        await updateUserMemory(userId, newMem);
-      }
-    }
-      // ── Fallbackים ───────────────────────────────────────────
-      const imperative = /\b(צריך|להתקשר|התקשר|לקבוע|קבע|לשלוח|שלח|לכתוב|כתוב)\b/;
-      if (
-        (!parsed.entry_type && imperative.test(message)) ||      // לא זיהה בכלל
-        (parsed.entry_type==='task' && !parsed.task_name)         // זיהה but ריק
-      ){
-      parsed.entry_type = 'task';
-      parsed.task_name  ||= message.replace(imperative,'').trim();
-      }
-
-    return parsed;
-
-  } catch(e){
-    console.error('❌ Failed to parse GPT response:', e.message||e);
-    return getEmptyResponse();
+    gptData = JSON.parse(
+      completion.choices[0].message.function_call.arguments
+    );
+  } catch (err) {
+    console.error('❌ GPT function-call failed:', err);
+    return getEmptyResponse();        // החזר מבנה ריק במקום להפיל את ה-bot
   }
 
+  // 2.2 - השלמות לוגיקה מקומית (תאריך, שעה, frequency)
+  gptData.frequency      ||= parseFrequency(message);
+  gptData.due_date       ||= parseHebrewDate(message);
+  gptData.reminder_time  ||= extractTimeFromText(message);
+
+  if (gptData.entry_type === 'note' && !gptData.note_title && gptData.note_body)
+    gptData.note_title = gptData.note_body.slice(0, 40);
+
+  // 2.3 - עדכון זיכרון (כמו קודם – השארתי ללא שינוי)
+  if (userId) {
+    const newMem = {
+      ...(gptData.person_name && { name: gptData.person_name }),
+      ...(gptData.person_role && { role: gptData.person_role }),
+      ...(gptData.task_name   && { tags:[gptData.task_name],
+                                   keywords:{ [gptData.task_name]: gptData.category || 'כללי' }}),
+      ...(gptData.category    && { topics:[gptData.category] })
+    };
+    if (Object.keys(newMem).length) {
+      console.log('🧠 Updating user memory with:', newMem);
+      await updateUserMemory(userId, newMem);
+    }
+  }
+
+  return gptData;
 }
+
 
 export async function loadUserMemory(userId){
   const doc = await db.collection('user_memory').doc(userId).get();
