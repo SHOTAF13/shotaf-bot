@@ -5,6 +5,7 @@ import dotenv        from 'dotenv';
 import OpenAI        from 'openai';
 import { db }        from './firebase.js';
 import { updateUserMemory } from './updateUserMemory.js';
+import { getTopK } from './searchSimilar.js'
 
 dotenv.config();
 
