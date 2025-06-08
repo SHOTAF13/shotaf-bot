@@ -21,7 +21,7 @@ export async function updateUserMemory(userId, newInfo = {}) {
   let memoryData = {
     user_id: userId,
     memory: {
-      names: {},
+      contacts:{},
       keywords: {},
       topics: []
     }
@@ -34,7 +34,7 @@ export async function updateUserMemory(userId, newInfo = {}) {
 
   // ✍️ עדכון שם + תגים + תפקיד
   if (newInfo.name) {
-    const existing = memoryData.memory.names[newInfo.name] || {
+    const existing = memoryData.memory.contacts[newInfo.name] || {
       mentions: 0,
       tags: [],
       role: '',
