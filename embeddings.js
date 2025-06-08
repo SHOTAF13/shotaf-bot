@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { sql } from './db.js';            // wrapper ל-pg
+import { db } from './firebase.js';           // wrapper ל-pg
 
 const openai = new OpenAI({ apiKey: process.env.KEY_GPT });
 

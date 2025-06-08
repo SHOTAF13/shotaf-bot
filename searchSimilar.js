@@ -1,4 +1,4 @@
-import { sql } from './db.js';
+import { db } from './firebase.js';
 import OpenAI from 'openai';
 const openai = new OpenAI({ apiKey: process.env.KEY_GPT });
 
