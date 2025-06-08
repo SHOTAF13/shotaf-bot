@@ -89,7 +89,7 @@ function parseFrequency(txt){
 /* ------------------------------------------------------------------ */
 export async function analyzeMessageWithGPT(message, userId = null) {
   // 2.1 - קריאה ל-GPT עם function-calling
-const hits = await getTopK(userId, question);
+const hits = await getTopK(userId, message);
 const context = hits
   .filter(h=>h.score > 0.6)                  // סף איכות
   .map(h=> formatDocForPrompt(h.doc_id))     // שליפת כותרת/טקסט מ-Firestore
