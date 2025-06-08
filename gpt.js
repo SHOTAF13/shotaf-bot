@@ -209,3 +209,46 @@ function getEmptyResponse(){
     reminder_time:'12:00',person_name:'',person_role:''
   };
 }
+
+const STOPWORDS = new Set(['שלחתי','לי','כמה','מה','עלתה','עלות','כולל','עם','?',':','₪','€','$','לי']);
+
+export async function findBestNoteMatch(question, userId){
+  // 1. שלוף 50 הפתקים האחרונים של המשתמש
+  const snap = await db.collection('entries')
+    .where('user_id','==',userId)
+    .where('entry_type','==','note')
+    .orderBy('created_at','desc')
+    .limit(100).get();
+
+  if (snap.empty) return null;
+
+  // 2. נרמל את השאלה לביטוי-מילים
+  const qTokens = tokenize(question);
+
+  let best = null;                 // {title, body, score}
+  for (const doc of snap.docs){
+    const { title, body } = doc.data();
+    const text = `${title} ${body}`;
+    const score = jaccard(tokenize(text), qTokens);
+    if (!best || score > best.score) best = { title, body, score };
+  }
+
+  // 3. התאמה “טובה מספיק” = >0.25
+  return best && best.score >= 0.25 ? best : null;
+}
+
+/* ----- helpers ----- */
+function tokenize(str){
+  return str
+    .toLowerCase()
+    .replace(/["“”„«»'’]/g,'')
+    .split(/[\s,.;!?()/\-]+/)
+    .filter(w=>w && !STOPWORDS.has(w));
+}
+function jaccard(setA, setB){
+  const A = new Set(setA), B = new Set(setB);
+  const intersect = [...A].filter(x=>B.has(x)).length;
+  const union     = new Set([...A,...B]).size;
+  return union ? intersect/union : 0;
+}
+

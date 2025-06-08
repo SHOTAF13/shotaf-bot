@@ -1,8 +1,35 @@
 import { db } from './firebase.js';
+import { findBestNoteMatch } from './utils/search.js';
+
+// ----- 🔍 נסה למצוא פתק מתאים לפני GPT -----
+  const best = await findBestNoteMatch(question, userId);
+  
+  if (best){
+    // ① שולחים את הפתק כרקע ל-GPT ומקבלים תשובה נחמדה
+    const chat = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages:[
+        { role:'system', content:'אתה שותף דיגיטלי שעונה בעברית קלילה ותמציתית.' },
+        { role:'user',
+          content:
+`השאלה שלי: "${question}"
+
+להלן מידע רלוונטי מהפתק שלי:
+כותרת: ${best.title}
+תוכן: ${best.body}
+
+ענה לי בעברית ידידותית (בלי להזכיר "פתק" או "המסמך").` }
+      ]
+    });
+
+    return chat.choices[0].message.content.trim();
+  }
+
 
 export async function answerUserQuestionWithGPT(userId, newInfo = {}) {
   // הגנה מפני null
   newInfo = newInfo || {};
+  }
 
   const userRef = db.collection('user_memory').doc(userId);
   const doc = await userRef.get();
@@ -57,4 +84,4 @@ export async function answerUserQuestionWithGPT(userId, newInfo = {}) {
 
   await userRef.set(memoryData);
   console.log(`✅ זיכרון עודכן עבור ${userId}`);
-}
+
