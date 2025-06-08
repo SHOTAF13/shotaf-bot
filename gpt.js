@@ -88,6 +88,21 @@ function parseFrequency(txt){
 /* ------------------------------------------------------------------ */
 export async function analyzeMessageWithGPT(message, userId = null) {
   // 2.1 - קריאה ל-GPT עם function-calling
+const hits = await getTopK(userId, question);
+const context = hits
+  .filter(h=>h.score > 0.6)                  // סף איכות
+  .map(h=> formatDocForPrompt(h.doc_id))     // שליפת כותרת/טקסט מ-Firestore
+  .join('\n\n---\n\n');
+
+// שלב 2 – שליפת פרופיל והכנסת לפרומפט
+  const mem = userId ? await loadUserMemory(userId) : {};
+  const profileText = JSON.stringify(mem.profile || {});
+
+  const messages = [
+  { role: 'system', content: `פרופיל משתמש: ${profileText}\nאתה עוזר אישי דיגיטלי. בחר רק task או note.` },
+  { role: 'user',   content: message }
+  ];
+
   let gptData;
   try {
     const completion = await openai.chat.completions.create({
@@ -117,19 +132,29 @@ export async function analyzeMessageWithGPT(message, userId = null) {
     gptData.note_title = gptData.note_body.slice(0, 40);
 
   // 2.3 - עדכון זיכרון (כמו קודם – השארתי ללא שינוי)
-  if (userId) {
-    const newMem = {
-      ...(gptData.person_name && { name: gptData.person_name }),
-      ...(gptData.person_role && { role: gptData.person_role }),
-      ...(gptData.task_name   && { tags:[gptData.task_name],
-                                   keywords:{ [gptData.task_name]: gptData.category || 'כללי' }}),
-      ...(gptData.category    && { topics:[gptData.category] })
-    };
-    if (Object.keys(newMem).length) {
-      console.log('🧠 Updating user memory with:', newMem);
-      await updateUserMemory(userId, newMem);
-    }
+if (userId) {
+  const newProfile = {
+    ...(gptData.person_name && gptData.person_role && {
+      people: { [gptData.person_name]: gptData.person_role }
+    }),
+    ...(gptData.task_name && gptData.frequency && gptData.reminder_time && {
+      habits: {
+        [gptData.task_name]: {
+          freq: gptData.frequency,
+          time: gptData.reminder_time
+        }
+      }
+    }),
+    ...(gptData.category && {
+      topics: [gptData.category]
+    })
+  };
+
+  if (Object.keys(newProfile).length) {
+    console.log('🧠 Updating user profile with:', newProfile);
+    await updateUserMemory(userId, { profile: newProfile });
   }
+}
 
   return gptData;
 }

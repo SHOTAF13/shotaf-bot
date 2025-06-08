@@ -29,8 +29,29 @@ export async function updateUserMemory(userId, newInfo = {}) {
 
   const docSnap = await docRef.get();
   if (docSnap.exists) {
-    memoryData = docSnap.data();
+    memoryData = docSnap.data(); 
   }
+  // ✍️ פרופיל משתמש
+if (newInfo.profile) {
+  const existingProfile = memoryData.profile || {};
+
+  memoryData.profile = {
+    people: {
+      ...(existingProfile.people || {}),
+      ...(newInfo.profile.people || {})
+    },
+    habits: {
+      ...(existingProfile.habits || {}),
+      ...(newInfo.profile.habits || {})
+    },
+    topics: Array.from(
+      new Set([
+        ...(existingProfile.topics || []),
+        ...(newInfo.profile.topics || [])
+      ])
+    )
+  };
+}
 
   // ✍️ עדכון שם + תגים + תפקיד
   if (newInfo.name) {
