@@ -206,9 +206,11 @@ if (userId) {
     console.log('🧠 Updating user profile with:', newProfile);
     await updateUserMemory(userId, { profile: newProfile });
   }
+  
+  return gptData;
 }
 
-  return gptData;
+  
 
 
 
