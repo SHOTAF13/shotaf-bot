@@ -427,7 +427,11 @@ if (match && match[1]) {
       taskRow.reminder_datetime = tzDate.toISOString();
     }
 
-    await db.collection('tasks').doc(taskRow.task_id).set(taskRow);
+    await db.collection('tasks')
+        .doc(userId)                   // ← למשל: usr_676706
+        .collection('user_tasks')     // ← תת-אוסף קבוע
+        .doc(taskRow.task_id)
+        .set(taskRow);
 
     const confirm = `
 💡 סגור! הוספתי את זה לרשימה שלך:
