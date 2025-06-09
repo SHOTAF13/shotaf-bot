@@ -288,7 +288,7 @@ if ((m = message.match(whoRegex)) || (m = message.match(whatRegex))){
     /* ---------- 1. Q&A path ---------- */
     if (isQuestion) {
       const memory = await loadUserMemory(userId);
-      const answer = await answerUserQuestionWithGPT(message, memory, userId);
+    //const answer = await answerUserQuestionWithGPT(message, memory, userId); - קורא לפוקנציה שמאפשרת לשאול שאלות 
       await sendWhatsappMessage(phone, answer);
       return res.sendStatus(200); 
     }
