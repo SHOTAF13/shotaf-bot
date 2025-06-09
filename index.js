@@ -135,6 +135,29 @@ async function sendWhatsappMessage(phone, message) {
  *    • task → שומר משימה + תזכורת.  
  *    • “מה יש לי השבוע?” → שולח סיכום שבוע.
  */
+async function ensureUserExists(phoneDigits) {
+
+  const userId = 'usr_' + phoneDigits.slice(-6);
+  const docRef = db.collection('users').doc(userId);
+  const snap = await docRef.get();
+
+  if (!snap.exists) {
+    // יוזר חדש – מוסיף ל-Firestore
+    await docRef.set({
+      user_id: userId,
+      phone: phoneDigits,
+      name: '',                      // ← מקום לשם בהמשך
+      first_message: true,          // ← זיהוי משתמש חדש
+      created_at: new Date().toISOString()
+    });
+    console.log('👤 יוזר חדש נוסף:', phoneDigits);
+  }
+
+  // תמיד מוסיף ל־Set (גם אם כבר קיים)
+  allowedUsers.add(phoneDigits);
+}
+
+
 app.post('/webhook', async (req,res)=>{
   try {
     /* ---------- sanity checks ---------- */
@@ -144,8 +167,7 @@ const sender  = senderData?.sender;
 const chatId  = senderData?.chatId;
 const message = messageData?.textMessageData?.textMessage || '';
 
-console.log('📦 שולח לכתובת:', `https://api.green-api.com/waInstance${BOT_ID_INSTANCE}/sendMessage/${BOT_TOKEN}`);
-console.log('📱 chatId:', chatId, '📨 message:', message);
+
 
 /* --------------- HARD FILTERS --------------- */
 // 1. חייב להיות טייפ הודעה נכנסת (לא state / outgoing / history)
@@ -159,7 +181,7 @@ if (!message.trim()) return res.sendStatus(200);
 
 // 4. המשתמש חייב להופיע ב-Firestore
 const phoneDigits = chatId.replace('@c.us','');   // chatId==sender בצ'אט פרטי
-if (!allowedUsers.has(phoneDigits)) return res.sendStatus(200);
+await ensureUserExists(phoneDigits);
 
 const memory = await loadUserMemory('usr_'+phoneDigits.slice(-6));
 
