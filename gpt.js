@@ -151,10 +151,18 @@ const context = hits
   // 2.2 - השלמות לוגיקה מקומית (תאריך, שעה, frequency)
   gptData.frequency      ||= parseFrequency(message);
   gptData.due_date       ||= parseHebrewDate(message);
+  
   // תיקון לשנה שחלפה – אם יש תאריך
   if (gptData.due_date) {
-   gptData.due_date = correctYearIfPast(gptData.due_date);
+   
+    gptData.due_date = correctYearIfPast(gptData.due_date);
   }
+
+  // אם GPT לא החזיר תאריך או שהוא החזיר את התאריך של היום – נחליף
+  if (!gptData.due_date || new Date(gptData.due_date).toDateString() === new Date().toDateString()) {
+  gptData.due_date = localDate;
+  }
+  
   gptData.reminder_time  ||= extractTimeFromText(message);
 
   if (gptData.entry_type === 'note' && !gptData.note_title && gptData.note_body)
