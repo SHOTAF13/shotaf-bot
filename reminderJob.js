@@ -115,7 +115,7 @@ else{
 הקטגוריה: "${display}"
 התאריך: ${task.due_date}
 
-כתוב תזכורת קצרה ונעימה בעברית, כולל אימוג'י אחד מתאים.
+כתוב תזכורת קצרה ונעימה בעברית, .
 `.trim();
 
     const completion = await openai.chat.completions.create({

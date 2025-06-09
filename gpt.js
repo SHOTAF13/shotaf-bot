@@ -50,18 +50,28 @@ const analyzeSchema = {
 /*                     DATE / TIME HELPERS                            */
 /* ------------------------------------------------------------------ */
 function parseHebrewDate(txt){
-  const today = new Date();
+  const now = new Date(); // ⬅ שמור עותק מקורי
   const lower = txt.toLowerCase();
 
-  if (lower.includes('היום'))  return today.toISOString().split('T')[0];
-  if (lower.includes('מחר'))   return new Date(today.setDate(today.getDate()+1)).toISOString().split('T')[0];
+  if (lower.includes('היום'))
+    return now.toISOString().split('T')[0];
+
+  if (lower.includes('מחר')) {
+    const tomorrow = new Date(now); // ⬅ יצירת עותק חדש
+    tomorrow.setDate(now.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  }
 
   for (const [label,targetDay] of Object.entries(daysMap)){
     if (!txt.includes(label)) continue;
-    let diff = (targetDay - today.getDay() + 7) % 7 || 7;
-    const res = new Date(today); res.setDate(today.getDate()+diff);
-    return res.toISOString().split('T')[0];
+    const today = new Date(); // ⬅ לא נוגעים ב־now המקורי
+    const currentDay = today.getDay();
+    let diff = (targetDay - currentDay + 7) % 7;
+    if (diff === 0) diff = 7;
+    today.setDate(today.getDate() + diff);
+    return today.toISOString().split('T')[0];
   }
+
   return '';
 }
 
