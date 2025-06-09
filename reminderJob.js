@@ -97,77 +97,76 @@ async function checkReminders() {
       continue;
     }
 /* ---------- נסה קודם הרגל קבוע ---------- */
-const mem = await loadUserMemory(task.user_id);
+const mem   = await loadUserMemory(task.user_id);
 const habit = mem?.habits?.[task.task_name];
 
+// 2) בונים את ההודעה — אם יש הרגל, משתמשים בו, אחרת מבקשים מ-GPT
 let message;
-if (habit){
+if (habit) {
   message = `⏰ תזכורת (${habit.freq}): ${task.task_name}`;
-}
-else{
-    /* ---------- בניית הודעה חכמה באמצעות GPT ---------- */
-    const catId  = task.categoryId || 'general';
-    const catDoc = await db.collection('categories').doc(catId).get();
-    const { display = catId, emoji = '' } = catDoc.data() || {};
+} else {
+  /* ---------- בניית הודעה חכמה באמצעות GPT ---------- */
+  const catId  = task.categoryId || 'general';
+  const catDoc = await db.collection('categories').doc(catId).get();
+  const { display = catId, emoji = '' } = catDoc.data() || {};
 
-    const gptPrompt = `
+  const gptPrompt = `
 המשימה: "${task.task_name}"
 הקטגוריה: "${display}"
 התאריך: ${task.due_date}
 
-כתוב תזכורת קצרה ונעימה בעברית, .
+כתוב תזכורת קצרה ונעימה בעברית.
 `.trim();
 
-    const completion = await openai.chat.completions.create({
-      model   : 'gpt-4o-mini',
-      messages: [{ role:'user', content:gptPrompt }]
-    });
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role:'user', content: gptPrompt }]
+  });
 
-    message = completion.choices[0]?.message?.content
-                || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
-
-
-    /* ---------- שליחה ---------- */
-  const personalized = personalize(message, mem);
-  await sendWhatsappMessage(chatId, personalized);
-
-    /* ---------- גלגול קדימה / סימון נשלח ---------- */
-    const updateData = {};
-    const freq = (task.frequency || '').trim();
-
-    switch (freq) {
-      case 'יומי':
-        updateData.reminder_datetime = new Date(
-          new Date(task.reminder_datetime).getTime() + 24*60*60*1000
-        ).toISOString();
-        break;
-
-      case 'שבועי':
-      case 'כל יום ראשון':
-        updateData.reminder_datetime = new Date(
-          new Date(task.reminder_datetime).getTime() + 7*24*60*60*1000
-        ).toISOString();
-        break;
-
-      case 'חודשי': {
-        const d = new Date(task.reminder_datetime);
-        d.setMonth(d.getMonth() + 1);
-        updateData.reminder_datetime = d.toISOString();
-        break;
-      }
-
-      default:          // חד פעמי או ריק
-        updateData.was_sent = true;
-    }
-
-    await doc.ref.update(updateData);
-    console.log('✅ תזכורת נשלחה →', task.task_id);
-    }
-  }
+  message = completion.choices[0]?.message?.content
+            || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
 }
 
+// 3) שליחה (לכל סוג הודעה)
+const personalized = personalize(message, mem);
+await sendWhatsappMessage(chatId, personalized);
 
+// 4) גלגול קדימה / סימון כנשלח
+const updateData = {};
+const freq = (task.frequency || '').trim();
+
+switch (freq) {
+  case 'יומי':
+    updateData.reminder_datetime = new Date(
+      new Date(task.reminder_datetime).getTime() + 24*60*60*1000
+    ).toISOString();
+    break;
+
+  case 'שבועי':
+  case 'כל יום ראשון':
+    updateData.reminder_datetime = new Date(
+      new Date(task.reminder_datetime).getTime() + 7*24*60*60*1000
+    ).toISOString();
+    break;
+
+  case 'חודשי': {
+    const d = new Date(task.reminder_datetime);
+    d.setMonth(d.getMonth() + 1);
+    updateData.reminder_datetime = d.toISOString();
+    break;
+  }
+
+  default: // חד-פעמי או ריק
+    updateData.was_sent = true;
+}
+
+  await doc.ref.update(updateData);
+  console.log('✅ תזכורת נשלחה →', task.task_id);
+
+
+}
 /* ------------------------------------------------------------------ */
 /*                         SCHEDULER (every 1 min)                    */
 /* ------------------------------------------------------------------ */
 setInterval(checkReminders, CHECK_INTERVAL);
+}
