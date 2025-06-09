@@ -85,6 +85,20 @@ function extractTimeFromText(txt){
   return '12:00';
 }
 
+function correctYearIfPast(dateStr) {
+  const inputDate = new Date(dateStr);
+  const now = new Date();
+
+  // אם זה תאריך מהעבר – שנה אותו לשנה נוכחית או הבאה
+  inputDate.setFullYear(now.getFullYear());
+  if (inputDate < now) {
+    inputDate.setFullYear(now.getFullYear() + 1);
+  }
+
+  return inputDate.toISOString().split('T')[0];
+}
+
+
 function parseFrequency(txt){
   if (/כל יום/i.test(txt))                     return 'יומי';
   if (/פעמיים בשבוע|כל.*שבוע/i.test(txt))     return 'שבועי';
@@ -137,6 +151,10 @@ const context = hits
   // 2.2 - השלמות לוגיקה מקומית (תאריך, שעה, frequency)
   gptData.frequency      ||= parseFrequency(message);
   gptData.due_date       ||= parseHebrewDate(message);
+  // תיקון לשנה שחלפה – אם יש תאריך
+  if (gptData.due_date) {
+   gptData.due_date = correctYearIfPast(gptData.due_date);
+  }
   gptData.reminder_time  ||= extractTimeFromText(message);
 
   if (gptData.entry_type === 'note' && !gptData.note_title && gptData.note_body)
