@@ -1,73 +1,99 @@
 /* ------------------------------------------------------------------ */
 /*                               IMPORTS                              */
 /* ------------------------------------------------------------------ */
-import dotenv        from 'dotenv';
-import OpenAI        from 'openai';
-import { db }        from './firebase.js';
-import { updateUserMemory } from './updateUserMemory.js';
-import { getTopK } from './searchSimilar.js'
+import dotenv  from "dotenv";
+import OpenAI  from "openai";
+import { db } from "./firebase.js";
+import { updateUserMemory } from "./updateUserMemory.js";
+import { getTopK }         from "./searchSimilar.js";
 
+/* ------------------------------------------------------------------ */
+/*                              CONFIG                                */
+/* ------------------------------------------------------------------ */
 dotenv.config();
-
-/* ------------------------------------------------------------------ */
-/*                            CONSTANTS                               */
-/* ------------------------------------------------------------------ */
 const openai = new OpenAI({ apiKey: process.env.KEY_GPT });
 
-/** המרה יום-שם → מספר-יום (0=Sunday) */
-const daysMap = {
-  Sunday:0, Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6,
-  'יום ראשון':0, 'יום שני':1, 'יום שלישי':2, 'יום רביעי':3,
-  'יום חמישי':4, 'יום שישי':5, 'יום שבת':6
-};
+/* ------------------------------------------------------------------ */
+/*                         GLOBAL CONSTANTS                           */
+/* ------------------------------------------------------------------ */
+// שמות הימים בעברית – שימושי להזרקת התאריך העכשווי אל GPT
+const HEBREW_DAYS = [
+  "יום ראשון", "יום שני", "יום שלישי",
+  "יום רביעי", "יום חמישי", "יום שישי", "יום שבת"
+];
 
 /* ------------------------------------------------------------------ */
-/*                            FUNCTION SCHEMA                         */
+/*                            GPT SCHEMA                              */
 /* ------------------------------------------------------------------ */
-const analyzeSchema = {
-  name: 'analyze_message',
-  description: 'סיווג הודעה מהמשתמש לשותף האישי',
+// Structure GPT must return when classifying a user message
+export const analyzeSchema = {
+  name: "analyze_message",
+  description: "סיווג הודעה מהמשתמש לשותף האישי",
   parameters: {
-    type: 'object',
+    type: "object",
     properties: {
-      entry_type:    { enum:['task','note'], description:'task=משימה, note=פתק' },
-      task_name:     { type:'string',  description:'שם המשימה (אם task)' },
-      category:      { type:'string' },
-      due_date:      { type:'string',  description:'YYYY-MM-DD או ריק' },
-      frequency:     { type:'string' },
-      reminder_time: { type:'string' },
-      note_title:    { type:'string' },
-      note_body:     { type:'string' },
-      person_name:   { type:'string' },
-      person_role:   { type:'string' }
+      entry_type   : { enum: ["task", "note"], description: "task = משימה, note = פתק" },
+      task_name    : { type: "string", description: "שם המשימה (אם task)" },
+      category     : { type: "string" },
+      due_date     : { type: "string", description: "YYYY-MM-DD או ריק" },
+      frequency    : { type: "string" },
+      reminder_time: { type: "string" },
+      note_title   : { type: "string" },
+      note_body    : { type: "string" },
+      person_name  : { type: "string" },
+      person_role  : { type: "string" }
     },
-    required: ['entry_type']
+    required: ["entry_type"]
   }
 };
 
+/* ------------------------------------------------------------------ */
+/*                       SIMPLE HELPER FUNCTIONS                      */
+/* ------------------------------------------------------------------ */
+// זיהוי תדירות בעברית בסיסית
+export function parseFrequency(txt) {
+  if (/כל יום/i.test(txt))                                return "יומי";
+  if (/פעמיים בשבוע|כל.*שבוע/i.test(txt))                return "שבועי";
+  if (/כל יום (ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/i) return "שבועי";
+  if (/כל חודש|חודשי/i.test(txt))                        return "חודשי";
+  return "";
+}
+
+// הוצאת שעה מהטקסט, או ברירת מחדל לפי מילת מפתח
+export function extractTimeFromText(txt) {
+  const m = txt.match(/\b(0?[0-9]|1[0-9]|2[0-3]):([0-5][0-9])\b/);
+  if (m) return m[0];
+  if (txt.includes("בערב"))            return "20:00";
+  if (txt.includes("בבוקר"))           return "08:00";
+  if (txt.includes("בצהריים"))         return "13:00";
+  if (txt.includes("אחה"))             return "17:00"; // אחה"צ / אחר הצהריים
+  return "12:00";
+}
 
 /* ------------------------------------------------------------------ */
-/*                     DATE / TIME HELPERS                            */
+/*         LEGACY DATE HELPERS (כיום לא בשימוש – שמור כגיבוי)        */
 /* ------------------------------------------------------------------ */
-function parseHebrewDate(txt){
-  const now = new Date(); // ⬅ שמור עותק מקורי
+/*
+function parseHebrewDate(txt) {
+  const now   = new Date();             // שמרנו עותק של היום
   const lower = txt.toLowerCase();
 
-  if (lower.includes('היום'))
+  if (lower.includes('היום')) {
     return now.toISOString().split('T')[0];
+  }
 
   if (lower.includes('מחר')) {
-    const tomorrow = new Date(now); // ⬅ יצירת עותק חדש
+    const tomorrow = new Date(now);      // יוצרים עותק חדש
     tomorrow.setDate(now.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
   }
 
-  for (const [label,targetDay] of Object.entries(daysMap)){
+  for (const [label, targetDay] of Object.entries(daysMap)) {
     if (!txt.includes(label)) continue;
-    const today = new Date(); // ⬅ לא נוגעים ב־now המקורי
+    const today      = new Date();       // עותק נוסף של היום
     const currentDay = today.getDay();
     let diff = (targetDay - currentDay + 7) % 7;
-    if (diff === 0) diff = 7;
+    if (diff === 0) diff = 7;            // אם זה היום עצמו, נקבל שבוע הבא
     today.setDate(today.getDate() + diff);
     return today.toISOString().split('T')[0];
   }
@@ -75,152 +101,117 @@ function parseHebrewDate(txt){
   return '';
 }
 
-function extractTimeFromText(txt){
-  const m = txt.match(/\b(0?[0-9]|1[0-9]|2[0-3]):([0-5][0-9])\b/);
-  if (m) return m[0];
-  if (txt.includes('בערב'))           return '20:00';
-  if (txt.includes('בבוקר'))          return '08:00';
-  if (txt.includes('בצהריים'))        return '13:00';
-  if (txt.includes('אחה"צ')||txt.includes('אחר הצהריים')) return '17:00';
-  return '12:00';
-}
-
+/**
+ * מתקנת שנה בתאריך אם הוא כבר עבר:
+ * - אם הגיעה שנה, מחזירים את השנה הנוכחית או הבאה כך שהתאריך יהיה בעתיד.
+ 
 function correctYearIfPast(dateStr) {
   const inputDate = new Date(dateStr);
-  const now = new Date();
+  const now       = new Date();
 
-  // אם זה תאריך מהעבר – שנה אותו לשנה נוכחית או הבאה
+  // קבע שנה נוכחית
   inputDate.setFullYear(now.getFullYear());
+  // אם עדיין לפני היום, נשדרג לשנה הבאה
   if (inputDate < now) {
     inputDate.setFullYear(now.getFullYear() + 1);
   }
 
   return inputDate.toISOString().split('T')[0];
 }
-
-
-function parseFrequency(txt){
-  if (/כל יום/i.test(txt))                     return 'יומי';
-  if (/פעמיים בשבוע|כל.*שבוע/i.test(txt))     return 'שבועי';
-  if (/כל יום (ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/i.test(txt)) return 'שבועי';
-  if (/כל חודש|חודשי/i.test(txt))             return 'חודשי';
-  return '';
-}
-
+*/
 
 /* ------------------------------------------------------------------ */
-/*                        GPT ANALYSIS (v2)                           */
+/*                   MAIN: analyzeMessageWithGPT                       */
 /* ------------------------------------------------------------------ */
 export async function analyzeMessageWithGPT(message, userId = null) {
-  // 2.1 - קריאה ל-GPT עם function-calling
-const hits = await getTopK(userId, message);
-const context = hits
-  .filter(h=>h.score > 0.6)                  // סף איכות
-  .map(h=> formatDocForPrompt(h.doc_id))     // שליפת כותרת/טקסט מ-Firestore
-  .join('\n\n---\n\n');
+  /* ---------- 1) הכנת הקשר ומידע איש המשתמש ---------- */
+  const hits   = await getTopK(userId, message);
+  const context = hits
+    .filter(h => h.score > 0.6)
+    .map(h => formatDocForPrompt(h.doc_id))
+    .join("\n\n---\n\n");
 
-// שלב 2 – שליפת פרופיל והכנסת לפרומפט
   const mem = userId ? await loadUserMemory(userId) : {};
   const profileText = JSON.stringify(mem.profile || {});
 
+  /* ---------- 2) הזרקת התאריך הנוכחי ל‑GPT ---------- */
+  const now       = new Date();
+  const todayISO  = now.toISOString().split("T")[0];
+  const todayName = HEBREW_DAYS[now.getDay()];
+
   const messages = [
-  { role: 'system', content: `פרופיל משתמש: ${profileText}\nאתה עוזר אישי דיגיטלי. בחר רק task או note.` },
-  { role: 'user',   content: message }
+    {
+      role: "system",
+      content:
+        `היום הוא ${todayName}, התאריך הוא ${todayISO}.\n` +
+        `פרופיל משתמש: ${profileText}\n` +
+        `אתה עוזר אישי דיגיטלי. החזר מבנה JSON לפי הסכמה, ובחר רק task או note.`
+    },
+    { role: "user", content: message }
   ];
 
+  /* ---------- 3) קריאה ל‑GPT ---------- */
   let gptData;
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'אתה עוזר אישי דיגיטלי. בחר רק task או note.' },
-        { role: 'user',   content: message }
-      ],
-      functions : [ analyzeSchema ],
-      function_call: { name: 'analyze_message' }
+      model: "gpt-4o-mini",
+      messages,
+      functions: [analyzeSchema],
+      function_call: { name: "analyze_message" }
     });
 
     gptData = JSON.parse(
       completion.choices[0].message.function_call.arguments
     );
   } catch (err) {
-    console.error('❌ GPT function-call failed:', err);
-    return getEmptyResponse();        // החזר מבנה ריק במקום להפיל את ה-bot
+    console.error("❌ GPT function-call failed:", err);
+    return getEmptyResponse();
   }
 
- // 2.2 - השלמות לוגיקה מקומית (תאריך, שעה, frequency)
-gptData.frequency ||= parseFrequency(message);
+  /* ---------- 4) השלמות צד‑שרת (שעה, תדירות) ---------- */
+  gptData.frequency      ||= parseFrequency(message);
+  gptData.reminder_time  ||= extractTimeFromText(message);
 
-// תמיד נפרש את התאריך מקומית, ונשמור אותו זמנית
-const localDate = parseHebrewDate(message);
+  if (gptData.entry_type === "note" && !gptData.note_title && gptData.note_body)
+    gptData.note_title = gptData.note_body.slice(0, 40);
 
-// נעדיף את ה־GPT אם קיים, אחרת נשתמש בשלנו
-const parsedLocal = parseHebrewDate(message);
-
-// אם GPT לא החזיר תאריך או החזיר תאריך לא הגיוני (לא יום ראשון), נחליף אותו
-if (!gptData.due_date || parsedLocal && parsedLocal !== '' &&
-    new Date(gptData.due_date).getDay() !== new Date(parsedLocal).getDay()) {
-  gptData.due_date = parsedLocal;
-}
-
-
-// תיקון שנה שחלפה – אם יש תאריך בכלל
-if (gptData.due_date) {
-  gptData.due_date = correctYearIfPast(gptData.due_date);
-}
-
-// אם GPT נתן את התאריך של **היום** (למרות שכתוב "מחר") – נעדיף את התאריך המקומי
-if (
-  localDate && gptData.due_date &&
-  new Date(gptData.due_date).toDateString() === new Date().toDateString()
-) {
-  gptData.due_date = localDate;
-}
-
-gptData.reminder_time ||= extractTimeFromText(message);
-
-// יצירת כותרת לפתק אם לא סופקה
-if (gptData.entry_type === 'note' && !gptData.note_title && gptData.note_body)
-  gptData.note_title = gptData.note_body.slice(0, 40);
-
-// 2.3 - עדכון זיכרון (כמו קודם – השארתי ללא שינוי)
-if (userId) {
-  const newProfile = {
-    ...(gptData.person_name && gptData.person_role && {
-      people: { [gptData.person_name]: gptData.person_role }
-    }),
-    ...(gptData.task_name && gptData.frequency && gptData.reminder_time && {
-      habits: {
-        [gptData.task_name]: {
-          freq: gptData.frequency,
-          time: gptData.reminder_time
+  /* ---------- 5) עדכון זיכרון ---------- */
+  if (userId) {
+    const newProfile = {
+      ...(gptData.person_name && gptData.person_role && {
+        people: { [gptData.person_name]: gptData.person_role }
+      }),
+      ...(gptData.task_name && gptData.frequency && gptData.reminder_time && {
+        habits: {
+          [gptData.task_name]: {
+            freq: gptData.frequency,
+            time: gptData.reminder_time
+          }
         }
-      }
-    }),
-    ...(gptData.category && {
-      topics: [gptData.category]
-    })
-  };
+      }),
+      ...(gptData.category && {
+        topics: [gptData.category]
+      })
+    };
 
-  if (Object.keys(newProfile).length) {
-    console.log('🧠 Updating user profile with:', newProfile);
-    await updateUserMemory(userId, { profile: newProfile });
+    if (Object.keys(newProfile).length) {
+      console.log("🧠 Updating user profile with:", newProfile);
+      await updateUserMemory(userId, { profile: newProfile });
+    }
   }
-}
 
   return gptData;
 }
 
-  
-
-
-
-export async function loadUserMemory(userId){
-  const doc = await db.collection('user_memory').doc(userId).get();
+/* ------------------------------------------------------------------ */
+/*                REMAINING UTILITY / EXPORT FUNCTIONS                */
+/* ------------------------------------------------------------------ */
+export async function loadUserMemory(userId) {
+  const doc = await db.collection("user_memory").doc(userId).get();
   return doc.exists ? doc.data() : {};
 }
 
-export async function answerUserQuestionWithGPT(question, memory, userId=null){
+/*/  async function answerUserQuestionWithGPT(question, memory, userId=null){
   const notes = Object.keys(memory.keywords || {})
                       .filter(k=>memory.keywords[k]==='note');
   const notesBlock = notes.length ? notes.map(t=>`• ${t}`).join('\n') : 'אין פתקים שנשמרו';
@@ -317,7 +308,7 @@ export async function findBestNoteMatch(question, userId){
   return best && best.score >= 0.25 ? best : null;
 }
 
-/* ----- helpers ----- */
+/* ----- helpers ----- 
 function tokenize(str){
   return str
     .toLowerCase()
@@ -331,4 +322,14 @@ function jaccard(setA, setB){
   const union     = new Set([...A,...B]).size;
   return union ? intersect/union : 0;
 }
+*/
 
+/* ------------------------------------------------------------------ */
+/*                          EMPTY RESPONSE                            */
+/* ------------------------------------------------------------------ */
+function getEmptyResponse() {
+  return {
+    task_name: "", category: "", due_date: "", frequency: "",
+    reminder_time: "12:00", person_name: "", person_role: ""
+  };
+}
