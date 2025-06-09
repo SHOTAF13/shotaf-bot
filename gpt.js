@@ -201,12 +201,6 @@ if (userId) {
   }
 }
 
-
-  if (Object.keys(newProfile).length) {
-    console.log('🧠 Updating user profile with:', newProfile);
-    await updateUserMemory(userId, { profile: newProfile });
-  }
-  
   return gptData;
 }
 
