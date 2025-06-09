@@ -5,7 +5,7 @@ import express                    from 'express';
 import bodyParser                 from 'body-parser';
 import dotenv                     from 'dotenv';
 import axios                      from 'axios';
-import { tagsFromCaption }  from './gpt.js';      
+//import { tagsFromCaption }  from './gpt.js';      
 import { Storage }          from '@google-cloud/storage'; 
 
 import { db }                     from './firebase.js';
