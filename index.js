@@ -54,13 +54,13 @@ function formatDueDate(isoDate) {
   if (!isoDate) return 'לא צוין';
   return new Date(isoDate).toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit' });
 }
-async function getPersonSummary(userId, personName){
-  const mem  = await loadUserMemory(userId);
-  const role = mem.contacts?.[personName] || '';
-  const snap = await db.collection('tasks')
-       .where('user_id','==',userId)
-       .where('task_name','>=',`לה${''}`)   // לקריאה יעילה
-       .get();
+  async function getPersonSummary(userId, personName){
+    const mem  = await loadUserMemory(userId);
+    const role = mem.contacts?.[personName] || '';
+    const snap = await db.collection('tasks')
+   .doc(userId)
+   .collection('user_tasks')
+   .get();
 
   const relevant = snap.docs
     .map(d=>d.data())
