@@ -148,27 +148,35 @@ const context = hits
     return getEmptyResponse();        // החזר מבנה ריק במקום להפיל את ה-bot
   }
 
-  // 2.2 - השלמות לוגיקה מקומית (תאריך, שעה, frequency)
-  gptData.frequency      ||= parseFrequency(message);
-  gptData.due_date       ||= parseHebrewDate(message);
-  
-  // תיקון לשנה שחלפה – אם יש תאריך
-  if (gptData.due_date) {
-   
-    gptData.due_date = correctYearIfPast(gptData.due_date);
-  }
+ // 2.2 - השלמות לוגיקה מקומית (תאריך, שעה, frequency)
+gptData.frequency ||= parseFrequency(message);
 
-  // אם GPT לא החזיר תאריך או שהוא החזיר את התאריך של היום – נחליף
-  if (!gptData.due_date || new Date(gptData.due_date).toDateString() === new Date().toDateString()) {
+// תמיד נפרש את התאריך מקומית, ונשמור אותו זמנית
+const localDate = parseHebrewDate(message);
+
+// נעדיף את ה־GPT אם קיים, אחרת נשתמש בשלנו
+gptData.due_date ||= localDate;
+
+// תיקון שנה שחלפה – אם יש תאריך בכלל
+if (gptData.due_date) {
+  gptData.due_date = correctYearIfPast(gptData.due_date);
+}
+
+// אם GPT נתן את התאריך של **היום** (למרות שכתוב "מחר") – נעדיף את התאריך המקומי
+if (
+  localDate && gptData.due_date &&
+  new Date(gptData.due_date).toDateString() === new Date().toDateString()
+) {
   gptData.due_date = localDate;
-  }
-  
-  gptData.reminder_time  ||= extractTimeFromText(message);
+}
 
-  if (gptData.entry_type === 'note' && !gptData.note_title && gptData.note_body)
-    gptData.note_title = gptData.note_body.slice(0, 40);
+gptData.reminder_time ||= extractTimeFromText(message);
 
-  // 2.3 - עדכון זיכרון (כמו קודם – השארתי ללא שינוי)
+// יצירת כותרת לפתק אם לא סופקה
+if (gptData.entry_type === 'note' && !gptData.note_title && gptData.note_body)
+  gptData.note_title = gptData.note_body.slice(0, 40);
+
+// 2.3 - עדכון זיכרון (כמו קודם – השארתי ללא שינוי)
 if (userId) {
   const newProfile = {
     ...(gptData.person_name && gptData.person_role && {
@@ -193,8 +201,15 @@ if (userId) {
   }
 }
 
-  return gptData;
+
+  if (Object.keys(newProfile).length) {
+    console.log('🧠 Updating user profile with:', newProfile);
+    await updateUserMemory(userId, { profile: newProfile });
+  }
 }
+
+  return gptData;
+
 
 
 export async function loadUserMemory(userId){
