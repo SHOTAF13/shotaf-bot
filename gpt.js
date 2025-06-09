@@ -155,7 +155,14 @@ gptData.frequency ||= parseFrequency(message);
 const localDate = parseHebrewDate(message);
 
 // נעדיף את ה־GPT אם קיים, אחרת נשתמש בשלנו
-gptData.due_date ||= localDate;
+const parsedLocal = parseHebrewDate(message);
+
+// אם GPT לא החזיר תאריך או החזיר תאריך לא הגיוני (לא יום ראשון), נחליף אותו
+if (!gptData.due_date || parsedLocal && parsedLocal !== '' &&
+    new Date(gptData.due_date).getDay() !== new Date(parsedLocal).getDay()) {
+  gptData.due_date = parsedLocal;
+}
+
 
 // תיקון שנה שחלפה – אם יש תאריך בכלל
 if (gptData.due_date) {
