@@ -429,8 +429,17 @@ if (match && match[1]) {
      function_call: { name: 'update_task' }
    });
 
+  console.log('🔍 updateTaskSchema is:', updateTaskSchema);
+  console.log('🔍 type of parameters:', typeof updateTaskSchema.parameters);
+
    // לוג פשוט כדי לדבג
    console.log('🔄 editRes:', JSON.stringify(editRes.choices[0],null,2));
+   // 2. לוג של הפיילוד המלא
+  console.log('📤 Sending payload to OpenAI.chat.completions.create:\n', 
+  JSON.stringify(payload, null, 2)
+  
+
+);
 
    const call = editRes.choices[0].message.function_call;
    if (call && call.name === 'update_task') {
