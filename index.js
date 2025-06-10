@@ -422,6 +422,9 @@ if (match && match[1]) {
     console.log('typeof UpdateTaskSchema:', typeof UpdateTaskSchema);
     console.log('UpdateTaskSchema:', JSON.stringify(UpdateTaskSchema, null, 2));
     console.log('📄 Schema type:', updateTaskSchema?.parameters?.type);
+    console.log('🧪 האם UpdateTaskSchema קיים?', typeof UpdateTaskSchema);  // אמור להיכשל
+    console.log('🧪 האם updateTaskSchema קיים?', typeof updateTaskSchema);  // אמור להיות "object"
+
 
    const isEdit = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
