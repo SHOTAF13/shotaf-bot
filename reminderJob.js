@@ -88,8 +88,8 @@ async function checkReminders() {
   // במקום זה נעבור ללולאה על כל משתמש ב־tasks(root).
 
   // 2) הבאת כל המשתמשים (מסמכי האב באוסף 'tasks')
-  const usersSnap = await db.collection('tasks').get();
-  console.log(`🔢 מצאתי ${usersSnap.docs.length} משתמשים ב־'tasks'`);
+  const usersSnap = await db.collection('users').get();
+  console.log(`🔢 מצאתי ${usersSnap.docs.length} משתמשים ב־'users'`);
 
   if (usersSnap.empty) {
     console.log('🔕 אין משתמשים כלל – מסיימים');
