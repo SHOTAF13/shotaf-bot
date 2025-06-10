@@ -16,7 +16,7 @@ import {
   //answerUserQuestionWithGPT,
   loadUserMemory,
   openai,
-  UpdateTaskSchema
+  updateTaskSchema 
 }                                 from './gpt.js';
 import { updateUserMemory, learnFromMessage } from './updateUserMemory.js';
 import { ensureCategory, ensurePerson } from './normalize.js';
@@ -437,7 +437,7 @@ if (match && match[1]) {
     ],
 
     
-    functions: [{ name: 'update_task', parameters: UpdateTaskSchema }],
+    functions: [{ name: 'update_task', parameters: updateTaskSchema }],
 
     function_call: { name: 'update_task' }
   });

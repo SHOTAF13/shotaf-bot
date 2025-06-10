@@ -74,7 +74,7 @@ export function extractTimeFromText(txt) {
 /*       עדכון        */
 /* ------------------------------------------------------------------ */
 
-export const UpdateTaskSchema = {
+export const updateTaskSchema = {
   name: 'update_task',
   description: 'מעדכן משימה קיימת לפי נתונים חדשים מהמשתמש',
   parameters: {
