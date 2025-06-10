@@ -82,11 +82,6 @@ async function checkReminders() {
   // ▶️ 1) התחלת הפונקציה
   console.log('▶️ התחלת checkReminders()', new Date().toISOString());
 
-  // === הסרנו את:
-  //   const snap = await db.collectionGroup('user_tasks')…
-  // כי בלי אינדקס מתאים השאילתה קרסה (FAILED_PRECONDITION).
-  // במקום זה נעבור ללולאה על כל משתמש ב־tasks(root).
-
   // 2) הבאת כל המשתמשים (מסמכי האב באוסף 'tasks')
   const usersSnap = await db.collection('users').get();
   console.log(`🔢 מצאתי ${usersSnap.docs.length} משתמשים ב־'users'`);

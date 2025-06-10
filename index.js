@@ -293,6 +293,24 @@ if ((m = message.match(whoRegex)) || (m = message.match(whatRegex))){
       return res.sendStatus(200); 
     }
 
+    // מחזיר את המשימה האחרונה של המשתמש לפי תאריך יצירה
+  async function getLastTask(userId) {
+    const snap = await db.collection(`tasks/${userId}/user_tasks`)
+      .orderBy('created_at', 'desc')  // ודא שאתה שומר את השדה הזה
+      .limit(1)
+       .get();
+
+       if (snap.empty) return null;
+
+        const doc = snap.docs[0];
+  return { ...doc.data(), task_id: doc.id };
+}
+
+  // מעדכן את המשימה הקיימת עם שינויים שהוחזרו מ־GPT
+  async function updateTaskInFirestore(userId, taskId, changes) {
+   const ref = db.doc(`tasks/${userId}/user_tasks/${taskId}`);
+   await ref.update(changes);
+}
     /* ---------- GPT analysis ---------- */
     const gptData = await analyzeMessageWithGPT(message, userId);
 
@@ -330,7 +348,7 @@ if ((m = message.match(whoRegex)) || (m = message.match(whatRegex))){
       return res.sendStatus(200);
     }
 
-    /* ---------- 4. Weekly summary ---------- */
+    /* ---------- 4. Weekly summary ---------- 
     const weeklyRegex = /מה.*(יש|רשום).*(השבוע)/i;
     if (weeklyRegex.test(message)) {
       const today = new Date();
@@ -393,8 +411,36 @@ if (match && match[1]) {
   await sendWhatsappMessage(phone,`📁 ${tag}:\n${txt}`);
   return res.sendStatus(200);
 }
+  */
+// בודק אם ההודעה החדשה  קשורה להודעה הקודמת ואם כן משנה . 
 
+  const lastTask = await getLastTask(userId);
+  if (lastTask) {
+   const isEdit = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'קיבלת משימה ישנה והודעה חדשה. אם ההודעה באה לעדכן את המשימה, החזר רק את השדות המעודכנים בפורמט של הפונקציה.'
+      },
+      {
+        role: 'user',
+        content: `משימה קודמת:\n${JSON.stringify(lastTask, null, 2)}\n\nהודעה חדשה:\n${message}`
+      }
+    ],
+    functions: [{ name: 'update_task', parameters: UpdateTaskSchema }],
+    function_call: { name: 'update_task' }
+  });
 
+  const changesRaw = isEdit.choices[0]?.message?.function_call?.arguments;
+  if (changesRaw) {
+    const parsedChanges = JSON.parse(changesRaw);
+    await updateTaskInFirestore(userId, lastTask.task_id, parsedChanges);
+    await sendWhatsappMessage(phone, 'עודכנתי את המשימה הקודמת ✅');
+    return res.sendStatus(200);
+
+  }
+  }
 
     /* ---------- 5. TASK (default) ---------- */
     const taskRow = {
