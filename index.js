@@ -421,6 +421,7 @@ if (match && match[1]) {
     console.log('📦 בדיקת סכמת UpdateTaskSchema');
     console.log('typeof UpdateTaskSchema:', typeof UpdateTaskSchema);
     console.log('UpdateTaskSchema:', JSON.stringify(UpdateTaskSchema, null, 2));
+    console.log('📄 Schema type:', updateTaskSchema?.parameters?.type);
 
    const isEdit = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -440,6 +441,7 @@ if (match && match[1]) {
 
     function_call: { name: 'update_task' }
   });
+  console.log('📄 Schema type:', updateTaskSchema?.parameters?.type);
 
   const changesRaw = isEdit.choices[0]?.message?.function_call?.arguments;
   if (changesRaw) {
