@@ -79,49 +79,73 @@ function personalize(msg, mem){
  *   • "חודשי"                 → reminder +1m (שומר על יום בחודש)
  */
 async function checkReminders() {
-console.log('▶️ התחלת checkReminders()', new Date().toISOString());
+  // ▶️ 1) התחלת הפונקציה
+  console.log('▶️ התחלת checkReminders()', new Date().toISOString());
 
-  const snap = await db.collectionGroup('user_tasks')
-    .where('was_sent','==',false).get();
-  console.log(`🔢 מצאתי ${snap.docs.length} משימות עם was_sent=false`);
+  // === הסרנו את:
+  //   const snap = await db.collectionGroup('user_tasks')…
+  // כי בלי אינדקס מתאים השאילתה קרסה (FAILED_PRECONDITION).
+  // במקום זה נעבור ללולאה על כל משתמש ב־tasks(root).
 
-    snap.docs.forEach(doc => {
-    console.log('    📄 doc path:', doc.ref.path);
-  });
+  // 2) הבאת כל המשתמשים (מסמכי האב באוסף 'tasks')
+  const usersSnap = await db.collection('tasks').get();
+  console.log(`🔢 מצאתי ${usersSnap.docs.length} משתמשים ב־'tasks'`);
 
-  
-  if (snap.empty) return console.log('🔕 אין משימות לא מתוזכרות');
+  if (usersSnap.empty) {
+    console.log('🔕 אין משתמשים כלל – מסיימים');
+    return;
+  }
 
-  for (const doc of snap.docs) {
-    const task   = doc.data();
-    console.log('\n🗂 בודק משימה', task.task_id, 'phone=', task.phone_number); 
-    console.log('    🔎 reminder_datetime:', task.reminder_datetime);
-    
-    const chatId = `${task.phone_number}@c.us`;
+  // 3) עבור כל משתמש – שליפה של תת-האוסף user_tasks שלו
+  for (const userDoc of usersSnap.docs) {
+    const userId = userDoc.id;
+    console.log(`\n👤 בודק משתמש ${userId}`);
 
-    if (!task.reminder_datetime){
-      console.log('❌ reminder_datetime חסר:', task.task_id);
+    const snap = await db
+      .collection(`tasks/${userId}/user_tasks`)
+      .where('was_sent', '==', false)
+      .get();
+    console.log(`  🔢 מצאתי ${snap.docs.length} משימות לא נשלחו עבור ${userId}`);
+
+    if (snap.empty) {
+      console.log('  🔕 אין משימות פתוחות למשתמש זה');
       continue;
     }
-    if (!isTimeToSend(task.reminder_datetime)){
-      console.log('⏱ עדיין לא הזמן למשימה', task.task_id);
-      continue;
-    }
-/* ---------- נסה קודם הרגל קבוע ---------- */
-const mem   = await loadUserMemory(task.user_id);
-const habit = mem?.habits?.[task.task_name];
 
-// 2) בונים את ההודעה — אם יש הרגל, משתמשים בו, אחרת מבקשים מ-GPT
-let message;
-if (habit) {
-  message = `⏰ תזכורת (${habit.freq}): ${task.task_name}`;
-} else {
-  /* ---------- בניית הודעה חכמה באמצעות GPT ---------- */
-  const catId  = task.categoryId || 'general';
-  const catDoc = await db.collection('categories').doc(catId).get();
-  const { display = catId, emoji = '' } = catDoc.data() || {};
+    // 4) עבור כל משימה ב-user_tasks
+    for (const doc of snap.docs) {
+      const task = doc.data();
+      console.log(`    🗂 משימה ${task.task_id} – reminder_datetime=${task.reminder_datetime}`);
 
-  const gptPrompt = `
+      // 5) בדיקת תאריך תזכורת קיים
+      if (!task.reminder_datetime) {
+        console.log('      ❌ reminder_datetime חסר – מדלגים');
+        continue;
+      }
+
+      // 6) בדיקת אם הגיע הזמן
+      if (!isTimeToSend(task.reminder_datetime)) {
+        console.log('      ⏱ עדיין לא הזמן – מדלגים');
+        continue;
+      }
+      console.log('      ⏰ הגיע הזמן – נכנסים לשליחה');
+
+      // === כאן הקוד המקורי שלך לבניית ההודעה ===
+
+      // 7) ניסיון להרגל קודם
+      const mem   = await loadUserMemory(task.user_id);
+      const habit = mem?.habits?.[task.task_name];
+
+      let message;
+      if (habit) {
+        // אם זו משימה שחוזרת בהרגל – טקסט פשוט
+        message = `⏰ תזכורת (${habit.freq}): ${task.task_name}`;
+      } else {
+        // אחרת – בונים prompt ושולחים ל-GPT
+        const catId  = task.categoryId || 'general';
+        const catDoc = await db.collection('categories').doc(catId).get();
+        const { display = catId, emoji = '' } = catDoc.data() || {};
+        const gptPrompt = `
 המשימה: "${task.task_name}"
 הקטגוריה: "${display}"
 התאריך: ${task.due_date}
@@ -129,52 +153,51 @@ if (habit) {
 כתוב תזכורת קצרה ונעימה בעברית.
 `.trim();
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [{ role:'user', content: gptPrompt }]
-  });
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role:'user', content: gptPrompt }]
+        });
+        message = completion.choices[0]?.message?.content
+                  || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
+      }
 
-  message = completion.choices[0]?.message?.content
-            || `⏰ תזכורת: ${task.task_name} (${display}) ${emoji}`;
-}
+      // 8) שליחה מותאמת
+      const personalized = personalize(message, mem);
+      const chatId = `${task.phone_number}@c.us`;
+      await sendWhatsappMessage(chatId, personalized);
+      console.log('      ✅ הודעה נשלחה →', chatId);
 
-// 3) שליחה (לכל סוג הודעה)
-const personalized = personalize(message, mem);
-await sendWhatsappMessage(chatId, personalized);
+      // 9) גלגול קדימה או סימון כנשלח
+      const updateData = {};
+      const freq = (task.frequency || '').trim();
+      switch (freq) {
+        case 'יומי':
+          updateData.reminder_datetime = new Date(
+            new Date(task.reminder_datetime).getTime() + 24*60*60*1000
+          ).toISOString();
+          break;
+        case 'שבועי':
+        case 'כל יום ראשון':
+          updateData.reminder_datetime = new Date(
+            new Date(task.reminder_datetime).getTime() + 7*24*60*60*1000
+          ).toISOString();
+          break;
+        case 'חודשי': {
+          const d = new Date(task.reminder_datetime);
+          d.setMonth(d.getMonth() + 1);
+          updateData.reminder_datetime = d.toISOString();
+          break;
+        }
+        default: // חד-פעמי או ריק
+          updateData.was_sent = true;
+      }
 
-// 4) גלגול קדימה / סימון כנשלח
-const updateData = {};
-const freq = (task.frequency || '').trim();
-
-switch (freq) {
-  case 'יומי':
-    updateData.reminder_datetime = new Date(
-      new Date(task.reminder_datetime).getTime() + 24*60*60*1000
-    ).toISOString();
-    break;
-
-  case 'שבועי':
-  case 'כל יום ראשון':
-    updateData.reminder_datetime = new Date(
-      new Date(task.reminder_datetime).getTime() + 7*24*60*60*1000
-    ).toISOString();
-    break;
-
-  case 'חודשי': {
-    const d = new Date(task.reminder_datetime);
-    d.setMonth(d.getMonth() + 1);
-    updateData.reminder_datetime = d.toISOString();
-    break;
+      await doc.ref.update(updateData);
+      console.log('      🔄 עדכון משימה ב-Firestore →', updateData);
+    }
   }
 
-  default: // חד-פעמי או ריק
-    updateData.was_sent = true;
-}
-
-  await doc.ref.update(updateData);
-  console.log('✅ תזכורת נשלחה →', task.task_id);
-
-}
+  console.log('\n▶️ סיום checkReminders()', new Date().toISOString());
 }
 
 /* ------------------------------------------------------------------ */
