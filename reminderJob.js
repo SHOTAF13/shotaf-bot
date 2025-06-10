@@ -51,6 +51,8 @@ async function sendWhatsappMessage(chatId, message) {
 function isTimeToSend(reminderDateTime) {
   const nowISR = new Date(Date.now() + TZ_OFFSET_ISRAEL);
   return nowISR >= new Date(reminderDateTime);
+    console.log(`    ⏰ nowISR=${nowISR.toISOString()}, remind=${remindDate.toISOString()}`);
+  
 }
 
 function personalize(msg, mem){
@@ -77,15 +79,19 @@ function personalize(msg, mem){
  *   • "חודשי"                 → reminder +1m (שומר על יום בחודש)
  */
 async function checkReminders() {
-
+console.log('▶️ התחלת checkReminders()', new Date().toISOString());
 
   const snap = await db.collection('tasks')
     .where('was_sent','==',false).get();
-
+  console.log(`🔢 מצאתי ${snap.docs.length} משימות עם was_sent=false`);
+  
   if (snap.empty) return console.log('🔕 אין משימות לא מתוזכרות');
 
   for (const doc of snap.docs) {
     const task   = doc.data();
+    console.log('\n🗂 בודק משימה', task.task_id, 'phone=', task.phone_number); 
+    console.log('    🔎 reminder_datetime:', task.reminder_datetime);
+    
     const chatId = `${task.phone_number}@c.us`;
 
     if (!task.reminder_datetime){
