@@ -81,9 +81,14 @@ function personalize(msg, mem){
 async function checkReminders() {
 console.log('▶️ התחלת checkReminders()', new Date().toISOString());
 
-  const snap = await db.collectionGroup('tasks')
+  const snap = await db.collectionGroup('user_tasks')
     .where('was_sent','==',false).get();
   console.log(`🔢 מצאתי ${snap.docs.length} משימות עם was_sent=false`);
+
+    snap.docs.forEach(doc => {
+    console.log('    📄 doc path:', doc.ref.path);
+  });
+
   
   if (snap.empty) return console.log('🔕 אין משימות לא מתוזכרות');
 
