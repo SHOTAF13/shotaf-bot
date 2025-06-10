@@ -418,11 +418,11 @@ if (match && match[1]) {
 
   const lastTask = await getLastTask(userId);
   if (lastTask) {
-    console.log('📦 בדיקת סכמת UpdateTaskSchema');
-    console.log('typeof UpdateTaskSchema:', typeof UpdateTaskSchema);
-    console.log('UpdateTaskSchema:', JSON.stringify(UpdateTaskSchema, null, 2));
+    console.log('📦 בדיקת סכמת updateTaskSchema');
+    console.log('typeof updateTaskSchema:', typeof updateTaskSchema);
+    console.log('updateTaskSchema:', JSON.stringify(updateTaskSchema, null, 2));
     console.log('📄 Schema type:', updateTaskSchema?.parameters?.type);
-    console.log('🧪 האם UpdateTaskSchema קיים?', typeof UpdateTaskSchema);  // אמור להיכשל
+    console.log('🧪 האם updateTaskSchema קיים?', typeof updateTaskSchema);  // אמור להיכשל
     console.log('🧪 האם updateTaskSchema קיים?', typeof updateTaskSchema);  // אמור להיות "object"
 
 
