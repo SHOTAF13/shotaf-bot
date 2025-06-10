@@ -163,11 +163,11 @@ switch (freq) {
   await doc.ref.update(updateData);
   console.log('✅ תזכורת נשלחה →', task.task_id);
 
-
+}
+}
 
 /* ------------------------------------------------------------------ */
 /*                         SCHEDULER (every 1 min)                    */
 /* ------------------------------------------------------------------ */
 setInterval(checkReminders, CHECK_INTERVAL);
-}
-}
+
