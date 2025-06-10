@@ -439,8 +439,8 @@ if (match && match[1]) {
       }
     ],
 
-    
-    functions: [{ name: 'update_task', parameters: updateTaskSchema }],
+    functions: [updateTaskSchema
+      ],
 
     function_call: { name: 'update_task' }
   });
