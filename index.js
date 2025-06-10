@@ -418,6 +418,10 @@ if (match && match[1]) {
 
   const lastTask = await getLastTask(userId);
   if (lastTask) {
+    console.log('📦 בדיקת סכמת UpdateTaskSchema');
+    console.log('typeof UpdateTaskSchema:', typeof UpdateTaskSchema);
+    console.log('UpdateTaskSchema:', JSON.stringify(UpdateTaskSchema, null, 2));
+
    const isEdit = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
@@ -430,7 +434,10 @@ if (match && match[1]) {
         content: `משימה קודמת:\n${JSON.stringify(lastTask, null, 2)}\n\nהודעה חדשה:\n${message}`
       }
     ],
+
+    
     functions: [{ name: 'update_task', parameters: UpdateTaskSchema }],
+
     function_call: { name: 'update_task' }
   });
 
