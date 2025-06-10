@@ -14,11 +14,12 @@ import path                       from 'node:path';
 import {
   analyzeMessageWithGPT,
   //answerUserQuestionWithGPT,
-  loadUserMemory
+  loadUserMemory,
+  openai,
+  UpdateTaskSchema
 }                                 from './gpt.js';
 import { updateUserMemory, learnFromMessage } from './updateUserMemory.js';
 import { ensureCategory, ensurePerson } from './normalize.js';
-import { openai } from './gpt.js';
 dotenv.config();
 
 console.log('✅ ENV BOT_ID_INSTANCE:', process.env.BOT_ID_INSTANCE);

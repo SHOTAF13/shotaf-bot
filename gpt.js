@@ -71,6 +71,44 @@ export function extractTimeFromText(txt) {
 }
 
 /* ------------------------------------------------------------------ */
+/*       עדכון        */
+/* ------------------------------------------------------------------ */
+
+export const UpdateTaskSchema = {
+  name: 'update_task',
+  description: 'מעדכן משימה קיימת לפי נתונים חדשים מהמשתמש',
+  parameters: {
+    type: 'object',
+    properties: {
+      task_name: {
+        type: 'string',
+        description: 'שם המשימה החדש (אם המשתמש שינה אותו)'
+      },
+      due_date: {
+        type: 'string',
+        format: 'date',
+        description: 'תאריך יעד חדש (בפורמט YYYY-MM-DD)'
+      },
+      reminder_time: {
+        type: 'string',
+        pattern: '^\\d{2}:\\d{2}$',
+        description: 'שעת תזכורת מעודכנת (HH:mm)'
+      },
+      category: {
+        type: 'string',
+        description: 'קטגוריה מעודכנת למשימה'
+      },
+      frequency: {
+        type: 'string',
+        description: 'תדירות מעודכנת אם צוין שינוי (כמו "יומי", "שבועי")'
+      }
+    },
+    required: []
+  }
+};
+
+
+/* ------------------------------------------------------------------ */
 /*         LEGACY DATE HELPERS (כיום לא בשימוש – שמור כגיבוי)        */
 /* ------------------------------------------------------------------ */
 /*
