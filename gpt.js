@@ -11,7 +11,7 @@ import { getTopK }         from "./searchSimilar.js";
 /*                              CONFIG                                */
 /* ------------------------------------------------------------------ */
 dotenv.config();
-const openai = new OpenAI({ apiKey: process.env.KEY_GPT });
+export const openai = new OpenAI({ apiKey: process.env.KEY_GPT });
 
 /* ------------------------------------------------------------------ */
 /*                         GLOBAL CONSTANTS                           */
