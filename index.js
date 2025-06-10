@@ -416,45 +416,33 @@ if (match && match[1]) {
   */
 // בודק אם ההודעה החדשה  קשורה להודעה הקודמת ואם כן משנה . 
 
-  const lastTask = await getLastTask(userId);
-  if (lastTask) {
-    console.log('📦 בדיקת סכמת updateTaskSchema');
-    console.log('typeof updateTaskSchema:', typeof updateTaskSchema);
-    console.log('updateTaskSchema:', JSON.stringify(updateTaskSchema, null, 2));
-    console.log('📄 Schema type:', updateTaskSchema?.parameters?.type);
-    console.log('🧪 האם updateTaskSchema קיים?', typeof updateTaskSchema);  // אמור להיכשל
-    console.log('🧪 האם updateTaskSchema קיים?', typeof updateTaskSchema);  // אמור להיות "object"
+ // 3) נסיון עדכון אוטומטי
+ const lastTask = await getLastTask(userId);
+ if (lastTask) {
+   const editRes = await openai.chat.completions.create({
+     model: 'gpt-4o-mini',
+     messages: [
+       { role: 'system',  content: 'קיבלת משימה ישנה והודעה חדשה. אם זו הודעה של עדכון, החזר רק את השדות שצריך לעדכן.' },
+       { role: 'user',    content: `משימה קודם:\n${JSON.stringify(lastTask, null,2)}\n\nהודעה חדשה:\n${message}` }
+     ],
+     functions: [{ name: 'update_task', parameters: updateTaskSchema }],
+     function_call: { name: 'update_task' }
+   });
 
+   // לוג פשוט כדי לדבג
+   console.log('🔄 editRes:', JSON.stringify(editRes.choices[0],null,2));
 
-   const isEdit = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      {
-        role: 'system',
-        content: 'קיבלת משימה ישנה והודעה חדשה. אם ההודעה באה לעדכן את המשימה, החזר רק את השדות המעודכנים בפורמט של הפונקציה.'
-      },
-      {
-        role: 'user',
-        content: `משימה קודמת:\n${JSON.stringify(lastTask, null, 2)}\n\nהודעה חדשה:\n${message}`
-      }
-    ],
-
-    functions: [updateTaskSchema
-      ],
-
-    function_call: { name: 'update_task' }
-  });
-  console.log('📄 Schema type:', updateTaskSchema?.parameters?.type);
-
-  const changesRaw = isEdit.choices[0]?.message?.function_call?.arguments;
-  if (changesRaw) {
-    const parsedChanges = JSON.parse(changesRaw);
-    await updateTaskInFirestore(userId, lastTask.task_id, parsedChanges);
-    await sendWhatsappMessage(phone, 'עודכנתי את המשימה הקודמת ✅');
-    return res.sendStatus(200);
-
-  }
-  }
+   const call = editRes.choices[0].message.function_call;
+   if (call && call.name === 'update_task') {
+     const changes = JSON.parse(call.arguments || '{}');
+     // אם אין שינויים אמיתיים, נמשיך הלאה
+     if (Object.keys(changes).length > 0) {
+       await updateTaskInFirestore(userId, lastTask.task_id, changes);
+       await sendWhatsappMessage(phone, '🔁 עודכנתי את המשימה הקודמת ✅');
+       return res.sendStatus(200);
+     }
+   }
+ }
 
     /* ---------- 5. TASK (default) ---------- */
     const taskRow = {
