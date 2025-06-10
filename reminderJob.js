@@ -81,7 +81,7 @@ function personalize(msg, mem){
 async function checkReminders() {
 console.log('▶️ התחלת checkReminders()', new Date().toISOString());
 
-  const snap = await db.collection('tasks')
+  const snap = await db.collectionGroup('tasks')
     .where('was_sent','==',false).get();
   console.log(`🔢 מצאתי ${snap.docs.length} משימות עם was_sent=false`);
   
