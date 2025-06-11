@@ -439,8 +439,7 @@ if (match && match[1]) {
 // 2. הדפס את מה שהולך באמת לספרייה
 console.log('🔍 updateTaskSchema.parameters:', JSON.stringify(modifyTaskSchema.parameters, null, 2));
 
-   // לוג פשוט כדי לדבג
-   console.log('🔄 editRes:', JSON.stringify(editRes.choices[0],null,2));
+
    // 2. לוג של הפיילוד המלא
   console.log('📤 Sending payload to OpenAI.chat.completions.create:\n', 
   JSON.stringify(payload, null, 2)
