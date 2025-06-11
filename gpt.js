@@ -109,6 +109,50 @@ export const updateTaskSchema = {
   */
 
 /* ------------------------------------------------------------------ */
+/*                 Modify Task Function Schema                        */
+/* ------------------------------------------------------------------ */
+export const modifyTaskSchema = {
+  name: 'modify_task',
+  description: 'משנה פרטי משימה קיימת לפי הודעה חדשה של המשתמש',
+  parameters: {
+    type: 'object',
+    properties: {
+      task_name: {
+        type: 'string',
+        description: 'שם משימה חדש, אם שונה'
+      },
+      due_date: {
+        type: 'string',
+        format: 'date',
+        description: 'תאריך יעד חדש (YYYY-MM-DD)'
+      },
+      reminder_time: {
+        type: 'string',
+        pattern: '^\\d{2}:\\d{2}$',
+        description: 'שעת תזכורת חדשה (HH:mm)'
+      },
+      category: {
+        type: 'string',
+        description: 'קטגוריה חדשה למשימה'
+      },
+      frequency: {
+        type: 'string',
+        description: 'תדירות חדשה כמו "יומי", "שבועי" וכו׳'
+      },
+      person_name: {
+        type: 'string',
+        description: 'שם האדם המשויך למשימה, אם שונה'
+      },
+      person_role: {
+        type: 'string',
+        description: 'תפקיד/קשר של האדם אם השתנה'
+      }
+    },
+    required: []  // לא חייב משהו – יחזיר רק את מה שהשתנה
+  }
+};
+
+/* ------------------------------------------------------------------ */
 /*         LEGACY DATE HELPERS (כיום לא בשימוש – שמור כגיבוי)        */
 /* ------------------------------------------------------------------ */
 /*
