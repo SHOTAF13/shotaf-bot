@@ -460,10 +460,9 @@ try {
 } catch (err) {
   console.error('❌ Error calling OpenAI:', err);
   return res.sendStatus(500);
-  }
 }
 
-// 4) עיבוד קריאת הפונקציה שחזרה
+// 4) עיבוד התשובה שחזרה מהמבחן
 const call = editRes.choices[0].message.function_call;
 if (call && call.name === 'modify_task') {
   const changes = JSON.parse(call.arguments || '{}');
@@ -471,7 +470,8 @@ if (call && call.name === 'modify_task') {
     await updateTaskInFirestore(userId, lastTask.task_id, changes);
     await sendWhatsappMessage(phone, '🔁 עודכנתי את המשימה הקודמת ✅');
     return res.sendStatus(200);
-  }
+   }
+  }  
 }
 
     /* ---------- 5. TASK (default) ---------- */
