@@ -424,7 +424,7 @@ if (match && match[1]) {
  const lastTask = await getLastTask(userId);
  if (lastTask) {
   console.dir(modifyTaskSchema, { depth: null });
-   const editRes = await openai.chat.completions.create({
+   const payload = {
      model: 'gpt-4o-mini',
      messages: [
        { role: 'system',  content: 'קיבלת משימה ישנה והודעה חדשה. אם זו הודעה של עדכון, החזר רק את השדות שצריך לעדכן.' },
@@ -432,8 +432,8 @@ if (match && match[1]) {
      ],
        functions: [ modifyTaskSchema ],
       function_call: { name: 'modify_task' }
-   });
-
+   };
+  
   console.log('🔍 updateTaskSchema is:', modifyTaskSchema);
   console.log('🔍 type of parameters:', typeof modifyTaskSchema.parameters);
 // 2. הדפס את מה שהולך באמת לספרייה
