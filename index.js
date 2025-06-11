@@ -423,6 +423,7 @@ if (match && match[1]) {
  // 3) נסיון עדכון אוטומטי
  const lastTask = await getLastTask(userId);
  if (lastTask) {
+  console.dir(modifyTaskSchema, { depth: null });
    const editRes = await openai.chat.completions.create({
      model: 'gpt-4o-mini',
      messages: [
