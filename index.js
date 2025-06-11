@@ -422,114 +422,133 @@ if (match && match[1]) {
 
  // 3) נסיון עדכון אוטומטי
  const lastTask = await getLastTask(userId);
- if (lastTask) {
 
-  console.dir(modifyTaskSchema, { depth: null });
+if (lastTask) {
+  // ┌───────────────────────────────────────────────────────────────────┐
+  // │ 1) נסיון עדכון אוטומטי: בונים payload ומשלחים ל־OpenAI כדי לדעת  │
+  // │    האם לבצע עדכון (modify_task) במקום להוסיף חדשה.           │
+  // └───────────────────────────────────────────────────────────────────┘
+  const payload = {
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'קיבלת משימה ישנה והודעה חדשה. אם זו הודעה של עדכון, החזר רק את השדות שצריך לעדכן.'
+      },
+      {
+        role: 'user',
+        content: `משימה קודם:\n${JSON.stringify(lastTask, null, 2)}\n\nהודעה חדשה:\n${message}`
+      }
+    ],
+    functions: [ modifyTaskSchema ],
+    function_call: { name: 'modify_task' }
+  };
 
-// 1) בניית ה-payload
-const payload = {
-  model: 'gpt-4o-mini',
-  messages: [
-    {
-      role: 'system',
-      content: 'קיבלת משימה ישנה והודעה חדשה. אם זו הודעה של עדכון, החזר רק את השדות שצריך לעדכן.'
-    },
-    {
-      role: 'user',
-      content: `משימה קודם:\n${JSON.stringify(lastTask, null, 2)}\n\nהודעה חדשה:\n${message}`
+  // ┌───────────────────────────────────────────────────────────────────┐
+  // │ 2) לוג של ה־payload כדי שתוכל לראות ב־console מה נשלח.         │
+  // └───────────────────────────────────────────────────────────────────┘
+  console.log(
+    '📤 Sending payload to OpenAI.chat.completions.create:\n',
+    JSON.stringify(payload, null, 2)
+  );
+
+  // ┌───────────────────────────────────────────────────────────────────┐
+  // │ 3) קריאה ל־OpenAI ושמירת התשובה במשתנה אחד (editRes), עם try/ │
+  // │    catch כדי לטפל בשגיאות רשת.                                  │
+  // └───────────────────────────────────────────────────────────────────┘
+  let editRes;
+  try {
+    editRes = await openai.chat.completions.create(payload);
+    console.log(
+      '🔄 OpenAI response (editRes):\n',
+      JSON.stringify(editRes, null, 2)
+    );
+  }
+   catch (err) {
+    console.error('❌ Error calling OpenAI:', err);
+    return res.sendStatus(500);
+  }
+
+
+  // ┌───────────────────────────────────────────────────────────────────┐
+  // │ 4) עיבוד function_call: אם המודל ביקש modify_task — עדכן את    │
+  // │    השדות שחזרו ועשה return, כדי לא להוסיף משימה חדשה.         │
+  // └───────────────────────────────────────────────────────────────────┘
+  const call = editRes.choices[0].message.function_call;
+  if (call && call.name === 'modify_task') {
+    const changes = JSON.parse(call.arguments || '{}');
+    if (Object.keys(changes).length > 0) {
+      await updateTaskInFirestore(userId, lastTask.task_id, changes);
+      await sendWhatsappMessage(phone, '🔁 עודכנתי את המשימה הקודמת ✅');
+      return res.sendStatus(200);
     }
-  ],
-  functions: [ modifyTaskSchema ],
-  function_call: { name: 'modify_task' }
+  }
+}  // ← כאן נסגר ה-if (lastTask): רק אם לא עדכנו, ממשיכים ל־5
+
+// ┌───────────────────────────────────────────────────────────────────┐
+// │ 5) TASK (default): אם לא עשינו עדכון, מוסיפים משימה חדשה.      │
+// └───────────────────────────────────────────────────────────────────┘
+const taskRow = {
+  task_id        : 'tsk_' + Date.now(),
+  user_id        : userId,
+  phone_number   : phone,
+  original_text  : message,
+  task_name      : gptData.task_name,
+  category       : gptData.category || 'כללי',
+  categoryId     : await ensureCategory(gptData.category),
+  personId       : await ensurePerson(gptData.person_name, gptData.person_role),
+  due_date       : gptData.due_date,
+  frequency      : gptData.frequency,
+  reminder_datetime: '',
+  was_sent       : false,
+  created_at     : new Date().toISOString()
 };
 
-// 2) לוג של ה-payload
-console.log(
-  '📤 Sending payload to OpenAI.chat.completions.create:\n',
-  JSON.stringify(payload, null, 2)
-);
-
-// 3) קריאה ל-OpenAI ושמירת התשובה במשתנה אחד
-let editRes;
-try {
-  editRes = await openai.chat.completions.create(payload);
-  console.log(
-    '🔄 OpenAI response (editRes):\n',
-    JSON.stringify(editRes, null, 2)
-  );
-} catch (err) {
-  console.error('❌ Error calling OpenAI:', err);
-  return res.sendStatus(500);
+/* חישוב reminder_datetime */
+if (taskRow.due_date && /^\d{4}-\d{2}-\d{2}$/.test(taskRow.due_date)) {
+  const [hRaw, mRaw] = (gptData.reminder_time || '12:00').split(':');
+  const pad = n => n.toString().padStart(2, '0');
+  const tzDate = new Date();
+  const [Y, M, D] = taskRow.due_date.split('-').map(Number);
+  tzDate.setFullYear(Y);
+  tzDate.setMonth(M - 1);
+  tzDate.setDate(D);
+  tzDate.setHours(+pad(hRaw));
+  tzDate.setMinutes(+pad(mRaw));
+  tzDate.setSeconds(0);
+  // במידה והתזכורת כבר עבר, נדחוף ליום המחרת
+  if (tzDate < new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))) {
+    tzDate.setDate(tzDate.getDate() + 1);
+  }
+  taskRow.reminder_datetime = tzDate.toISOString();
 }
 
-// 4) עיבוד התשובה שחזרה מהמבחן
-const call = editRes.choices[0].message.function_call;
-if (call && call.name === 'modify_task') {
-  const changes = JSON.parse(call.arguments || '{}');
-  if (Object.keys(changes).length > 0) {
-    await updateTaskInFirestore(userId, lastTask.task_id, changes);
-    await sendWhatsappMessage(phone, '🔁 עודכנתי את המשימה הקודמת ✅');
-    return res.sendStatus(200);
-   }
-  }  
-}
+await db
+  .collection('tasks')
+  .doc(userId)
+  .collection('user_tasks')
+  .doc(taskRow.task_id)
+  .set(taskRow);
 
-    /* ---------- 5. TASK (default) ---------- */
-    const taskRow = {
-      task_id   : 'tsk_'+Date.now(),
-      user_id   : userId,
-      phone_number: phone,
-      original_text: message,
-      task_name : gptData.task_name,
-      category  : gptData.category || 'כללי',
-      categoryId: await ensureCategory(gptData.category),
-      personId  : await ensurePerson(gptData.person_name, gptData.person_role),
-      due_date  : gptData.due_date,
-      frequency : gptData.frequency,
-      reminder_datetime:'',
-      was_sent  : false,
-      created_at: new Date().toISOString()
-    };
-
-    /* חישוב reminder_datetime */
-    if (taskRow.due_date && /^\d{4}-\d{2}-\d{2}$/.test(taskRow.due_date)){
-      const [hRaw,mRaw] = (gptData.reminder_time||'12:00').split(':');
-      const pad = n=>n.toString().padStart(2,'0');
-      const tzDate = new Date();
-      tzDate.setFullYear(+taskRow.due_date.split('-')[0]);
-      tzDate.setMonth(+taskRow.due_date.split('-')[1]-1);
-      tzDate.setDate (+taskRow.due_date.split('-')[2]);
-      tzDate.setHours(+pad(hRaw)); tzDate.setMinutes(+pad(mRaw)); tzDate.setSeconds(0);
-      if (tzDate < new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Jerusalem'})))
-        tzDate.setDate(tzDate.getDate()+1);
-      taskRow.reminder_datetime = tzDate.toISOString();
-    }
-
-    await db.collection('tasks')
-        .doc(userId)                   // ← למשל: usr_676706
-        .collection('user_tasks')     // ← תת-אוסף קבוע
-        .doc(taskRow.task_id)
-        .set(taskRow);
-
-    const confirm = `
+const confirm = `
 💡 סגור! הוספתי את זה לרשימה שלך:
 
-📝 משימה: ${taskRow.task_name||'לא זוהתה'}
+📝 משימה: ${taskRow.task_name || 'לא זוהתה'}
 📁 קטגוריה: ${taskRow.category || 'כללי'}
 📅 יעד: ${formatDueDate(taskRow.due_date)}
-🔁 תדירות: ${taskRow.frequency || 'חד פעמי'}
+🔁 תדירות: ${taskRow.frequency || 'חד־פעמי'}
 ⏰ תזכורת: ${formatFriendlyReminder(taskRow.reminder_datetime)}
 `.trim();
- await learnFromMessage(userId, gptData);   // ← חדש
- await sendWhatsappMessage(phone, confirm);
- res.sendStatus(200);
 
+await learnFromMessage(userId, gptData);
+await sendWhatsappMessage(phone, confirm);
+return res.sendStatus(200);
 
-  } catch(err){
-    console.error('🔥 שגיאה כללית ב-/webhook:', err);
-    res.sendStatus(500);
-  }
-});
+  } catch (err) {                                  // ← שורה 544: מוסיפים catch לסגור את ה-try
+     console.error('🔥 שגיאה כללית ב-/webhook:', err);
+     return res.sendStatus(500);
+}
+   });
 
-/* ------------------------------------------------------------------ */
 app.listen(PORT, ()=>console.log(`🚀 שרת פעיל על פורט ${PORT}`));
+
