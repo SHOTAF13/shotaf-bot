@@ -429,8 +429,8 @@ if (match && match[1]) {
        { role: 'system',  content: 'קיבלת משימה ישנה והודעה חדשה. אם זו הודעה של עדכון, החזר רק את השדות שצריך לעדכן.' },
        { role: 'user',    content: `משימה קודם:\n${JSON.stringify(lastTask, null,2)}\n\nהודעה חדשה:\n${message}` }
      ],
-     functions: [{ name: 'update_task', parameters: modifyTaskSchema }],
-     function_call: { name: 'update_task' }
+     functions: [{ name: 'modify_task', parameters: modifyTaskSchema }],
+     function_call: { name: 'modify_task' }
    });
 
   console.log('🔍 updateTaskSchema is:', modifyTaskSchema);
@@ -448,7 +448,7 @@ console.log('🔍 updateTaskSchema.parameters:', JSON.stringify(modifyTaskSchema
 );
 
    const call = editRes.choices[0].message.function_call;
-   if (call && call.name === 'update_task') {
+   if (call && call.name === 'modify_task') {
      const changes = JSON.parse(call.arguments || '{}');
      // אם אין שינויים אמיתיים, נמשיך הלאה
      if (Object.keys(changes).length > 0) {
