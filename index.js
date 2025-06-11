@@ -423,41 +423,56 @@ if (match && match[1]) {
  // 3) נסיון עדכון אוטומטי
  const lastTask = await getLastTask(userId);
  if (lastTask) {
+
   console.dir(modifyTaskSchema, { depth: null });
-   const payload = {
-     model: 'gpt-4o-mini',
-     messages: [
-       { role: 'system',  content: 'קיבלת משימה ישנה והודעה חדשה. אם זו הודעה של עדכון, החזר רק את השדות שצריך לעדכן.' },
-       { role: 'user',    content: `משימה קודם:\n${JSON.stringify(lastTask, null,2)}\n\nהודעה חדשה:\n${message}` }
-     ],
-       functions: [ modifyTaskSchema ],
-      function_call: { name: 'modify_task' }
-   };
-  
-  console.log('🔍 updateTaskSchema is:', modifyTaskSchema);
-  console.log('🔍 type of parameters:', typeof modifyTaskSchema.parameters);
-// 2. הדפס את מה שהולך באמת לספרייה
-console.log('🔍 updateTaskSchema.parameters:', JSON.stringify(modifyTaskSchema.parameters, null, 2));
 
+// 1) בניית ה-payload
+const payload = {
+  model: 'gpt-4o-mini',
+  messages: [
+    {
+      role: 'system',
+      content: 'קיבלת משימה ישנה והודעה חדשה. אם זו הודעה של עדכון, החזר רק את השדות שצריך לעדכן.'
+    },
+    {
+      role: 'user',
+      content: `משימה קודם:\n${JSON.stringify(lastTask, null, 2)}\n\nהודעה חדשה:\n${message}`
+    }
+  ],
+  functions: [ modifyTaskSchema ],
+  function_call: { name: 'modify_task' }
+};
 
-   // 2. לוג של הפיילוד המלא
-  console.log('📤 Sending payload to OpenAI.chat.completions.create:\n', 
+// 2) לוג של ה-payload
+console.log(
+  '📤 Sending payload to OpenAI.chat.completions.create:\n',
   JSON.stringify(payload, null, 2)
-  
-
 );
 
-   const call = editRes.choices[0].message.function_call;
-   if (call && call.name === 'modify_task') {
-     const changes = JSON.parse(call.arguments || '{}');
-     // אם אין שינויים אמיתיים, נמשיך הלאה
-     if (Object.keys(changes).length > 0) {
-       await updateTaskInFirestore(userId, lastTask.task_id, changes);
-       await sendWhatsappMessage(phone, '🔁 עודכנתי את המשימה הקודמת ✅');
-       return res.sendStatus(200);
-     }
-   }
- }
+// 3) קריאה ל-OpenAI ושמירת התשובה במשתנה אחד
+let editRes;
+try {
+  editRes = await openai.chat.completions.create(payload);
+  console.log(
+    '🔄 OpenAI response (editRes):\n',
+    JSON.stringify(editRes, null, 2)
+  );
+} catch (err) {
+  console.error('❌ Error calling OpenAI:', err);
+  return res.sendStatus(500);
+  }
+}
+
+// 4) עיבוד קריאת הפונקציה שחזרה
+const call = editRes.choices[0].message.function_call;
+if (call && call.name === 'modify_task') {
+  const changes = JSON.parse(call.arguments || '{}');
+  if (Object.keys(changes).length > 0) {
+    await updateTaskInFirestore(userId, lastTask.task_id, changes);
+    await sendWhatsappMessage(phone, '🔁 עודכנתי את המשימה הקודמת ✅');
+    return res.sendStatus(200);
+  }
+}
 
     /* ---------- 5. TASK (default) ---------- */
     const taskRow = {
