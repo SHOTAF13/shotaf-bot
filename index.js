@@ -15,8 +15,8 @@ import {
   analyzeMessageWithGPT,
   //answerUserQuestionWithGPT,
   loadUserMemory,
-  openai,
-  updateTaskSchema 
+  openai
+  //updateTaskSchema 
 }                                 from './gpt.js';
 import { updateUserMemory, learnFromMessage } from './updateUserMemory.js';
 import { ensureCategory, ensurePerson } from './normalize.js';
@@ -158,6 +158,43 @@ async function ensureUserExists(phoneDigits) {
   // תמיד מוסיף ל־Set (גם אם כבר קיים)
   allowedUsers.add(phoneDigits);
 }
+
+/* ------------------------------------------------------------------ */
+/*                       Update Task Function Schema                 */
+/* ------------------------------------------------------------------ */
+const updateTaskSchema = {
+  name: 'update_task',
+  description: 'מעדכן משימה קיימת לפי נתונים חדשים מהמשתמש',
+  parameters: {
+    type: 'object',
+    properties: {
+      task_name: {
+        type: 'string',
+        description: 'שם המשימה החדש (אם המשתמש שינה אותו)'
+      },
+      due_date: {
+        type: 'string',
+        format: 'date',
+        description: 'תאריך יעד חדש (פורמט YYYY-MM-DD)'
+      },
+      reminder_time: {
+        type: 'string',
+        pattern: '^\\d{2}:\\d{2}$',
+        description: 'שעת תזכורת מעודכנת (HH:mm)'
+      },
+      category: {
+        type: 'string',
+        description: 'קטגוריה מעודכנת למשימה'
+      },
+      frequency: {
+        type: 'string',
+        description: 'תדירות מעודכנת ("יומי","שבועי" וכו\')'
+      }
+    },
+    required: []
+  }
+};
+
 
 
 app.post('/webhook', async (req,res)=>{
