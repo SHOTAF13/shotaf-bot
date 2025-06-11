@@ -431,6 +431,9 @@ if (match && match[1]) {
 
   console.log('🔍 updateTaskSchema is:', updateTaskSchema);
   console.log('🔍 type of parameters:', typeof updateTaskSchema.parameters);
+// 2. הדפס את מה שהולך באמת לספרייה
+console.log('🔍 OpenAI payload.functions:', JSON.stringify(payload.functions, null, 2));
+console.log('🔍 updateTaskSchema.parameters:', JSON.stringify(updateTaskSchema.parameters, null, 2));
 
    // לוג פשוט כדי לדבג
    console.log('🔄 editRes:', JSON.stringify(editRes.choices[0],null,2));
