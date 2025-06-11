@@ -430,8 +430,8 @@ if (match && match[1]) {
        { role: 'system',  content: 'קיבלת משימה ישנה והודעה חדשה. אם זו הודעה של עדכון, החזר רק את השדות שצריך לעדכן.' },
        { role: 'user',    content: `משימה קודם:\n${JSON.stringify(lastTask, null,2)}\n\nהודעה חדשה:\n${message}` }
      ],
-     functions: [{ name: 'modify_task', parameters: modifyTaskSchema }],
-     function_call: { name: 'modify_task' }
+       functions: [ modifyTaskSchema ],
+      function_call: { name: 'modify_task' }
    });
 
   console.log('🔍 updateTaskSchema is:', modifyTaskSchema);
