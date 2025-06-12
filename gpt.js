@@ -160,15 +160,17 @@ export async function analyzeMessageWithGPT(message, userId = null) {
 
   const messages = [
     {
-      role: 'system',
-      content:
-        `היום הוא ${todayNameHeb}, התאריך ${todayISO}.\n` +
-        `פרופיל משתמש: ${profileText}\n` +
-        (context ? `מסמכים דומים:\n${context}\n\n` : '') +
-        'אתה עוזר אישי דיגיטלי. החזר JSON לפי הסכמה – ובחר רק task או note.'
-    },
-    { role: 'user', content: message }
-  ];
+    role: 'system',
+    content:
+`היום הוא ${todayNameHeb}, התאריך ${todayISO}.
+פרופיל משתמש: ${profileText}
+
+אתה עוזר אישי.
+החזר JSON לפי הסכמה:  task  או  note  בלבד.
+אם ההודעה אינה מתארת משימה/פתק – החזר {"entry_type":""}.`
+  },
+  { role: 'user', content: message }
+];
 
   /* ---------- 3) קריאה ל-GPT ---------- */
   let gptData;
