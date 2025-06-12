@@ -19,8 +19,6 @@ import {
   parseFrequency,
   extractTimeFromText,
   tagsFromCaption,
-  answerUserQuestionWithGPT, // ← מתוך #13
-  findBestNoteMatch          // ← מתוך #13
 } from './gpt.js';
 import { updateUserMemory, learnFromMessage } from './updateUserMemory.js';
 import { ensureCategory, ensurePerson }       from './normalize.js';
