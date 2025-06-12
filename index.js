@@ -71,12 +71,7 @@ function formatFriendlyReminder(iso){
           {weekday:'long',hour:'2-digit',minute:'2-digit'} :
           {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 }
-async function sendWhatsappMessage(phone,msg){
-  const chatId = phone.includes('@c.us')?phone:`${phone}@c.us`;
-  await axios.post(
-    `https://api.green-api.com/waInstance${BOT_ID_INSTANCE}/sendMessage/${BOT_TOKEN}`,
-    {chatId,message:msg});
-}
+
 
 /* ---------- Firestore wrappers ---------- */
 async function ensureUserExists(phone){
