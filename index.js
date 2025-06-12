@@ -20,6 +20,7 @@ import {
 
 import { updateUserMemory, learnFromMessage } from './updateUserMemory.js';
 import { ensureCategory, ensurePerson }       from './normalize.js';
+import{sendWhatsappMessage }                  from './reminderJob.js'
 
 dotenv.config();
 
