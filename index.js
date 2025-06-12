@@ -13,12 +13,10 @@ import path         from 'node:path';
 
 import {
   analyzeMessageWithGPT,
-  modifyTaskSchema,
   loadUserMemory,
   openai,
   parseFrequency,
   extractTimeFromText,
-  tagsFromCaption,
 } from './gpt.js';
 import { updateUserMemory, learnFromMessage } from './updateUserMemory.js';
 import { ensureCategory, ensurePerson }       from './normalize.js';
