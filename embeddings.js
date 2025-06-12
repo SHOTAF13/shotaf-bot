@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { db } from './firebase.js';           // wrapper ל-pg
 
+
 const openai = new OpenAI({ apiKey: process.env.KEY_GPT });
 
 export async function storeEmbedding(userId, text, docId, docType){

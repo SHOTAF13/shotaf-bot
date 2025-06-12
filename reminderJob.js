@@ -6,6 +6,8 @@ import axios             from 'axios';
 import { db }            from './firebase.js';
 import { loadUserMemory } from './gpt.js';
 import OpenAI            from 'openai';
+import { sendWhatsappMessage } from './whatsapp.js';
+
 
 dotenv.config();
 
@@ -29,19 +31,7 @@ const CHECK_INTERVAL   = 60 * 1000;            // 1 min
 /**
  * שליחת הודעת WhatsApp לפי Green-API creds
  */
-async function sendWhatsappMessage(chatId, message) {
-  const BASE_URL = `https://7105.api.greenapi.com`;
 
-  try {
-    await axios.post(
-      `${BASE_URL}/waInstance${process.env.BOT_ID_INSTANCE}/sendMessage/${process.env.BOT_TOKEN}`,
-      { chatId, message }
-    );
-    console.log('📤 הודעה נשלחה ל:', chatId);
-  } catch (err) {
-    console.error('❌ שגיאה בשליחה:', err.response?.data || err.message);
-  }
-}
 
 
 /**

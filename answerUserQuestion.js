@@ -1,6 +1,7 @@
 import { db } from './firebase.js';
 import { findBestNoteMatch } from './utils/search.js';
 
+
 // ----- 🔍 נסה למצוא פתק מתאים לפני GPT -----
   const best = await findBestNoteMatch(question, userId);
   
