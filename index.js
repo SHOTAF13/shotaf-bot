@@ -16,6 +16,7 @@ import {
   loadUserMemory,
   openai,
   parseFrequency,
+  modifyTaskSchema,
   extractTimeFromText,
 } from './gpt.js';
 import { updateUserMemory, learnFromMessage } from './updateUserMemory.js';
